@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenHotels findability study</title>
+<meta name="description" content="Can this hotel be recognised from the photos we have of it? Vote 👍 or 👎.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">OpenHotels · findability</div>
+  <nav class="tabs" role="tablist">
+    <button class="tab" data-tab="test_non_object" role="tab">Room photos <span class="cnt" id="cnt-test_non_object" title="your votes"></span></button>
+    <button class="tab" data-tab="test_object" role="tab">Object crops <span class="cnt" id="cnt-test_object" title="your votes"></span></button>
+    <button class="tab" data-tab="mine" role="tab">My votes <span class="cnt" id="cnt-mine" title="your votes"></span></button>
+  </nav>
+  <div class="me">
+    <button class="link" id="btn-name" title="name and annotator code"></button>
+    <button class="link" id="btn-help">how to vote</button>
+  </div>
+</header>
+
+<section id="view-vote" class="view" hidden>
+  <div class="status" id="status"></div>
+  <div class="controls" id="controls">
+    <label class="chk"><input type="checkbox" id="chk-skip-voted"> Skip queries that already have votes</label>
+    <form class="jump" id="jump-form">
+      <label>Go to position <input type="number" id="inp-pos" min="1" step="1" inputmode="numeric" placeholder="1"></label>
+      <button class="vote nav" type="submit">Go</button>
+    </form>
+  </div>
+  <div class="review" id="review-banner" hidden></div>
+  <div class="tally" id="tally" hidden></div>
+  <p class="question">
+    Could a careful person tell that this <b id="q-kind">photo</b> was taken in the hotel shown by the photos on the right?
+  </p>
+  <div class="cols">
+    <section class="query">
+      <h2>Query <span class="muted" id="q-meta"></span></h2>
+      <div id="q-cell"></div>
+      <p class="hint">Click any image to enlarge it.</p>
+    </section>
+    <section class="gallery">
+      <h2>All photos we have of this hotel <span class="muted" id="g-meta"></span></h2>
+      <div class="grid" id="g-grid"></div>
+    </section>
+  </div>
+</section>
+
+<section id="view-mine" class="view" hidden>
+  <div class="mine-head">
+    <h2 id="mine-title">Your votes</h2>
+    <div class="seg" id="mine-seg">
+      <button data-split="test_non_object">Room photos <span id="mcnt-test_non_object"></span></button>
+      <button data-split="test_object">Object crops <span id="mcnt-test_object"></span></button>
+    </div>
+  </div>
+  <p class="hint">Newest first. Click a photo to see it again with its gallery and everybody's votes, and to change your answer.</p>
+  <div class="grid mine-grid" id="mine-grid"></div>
+  <div class="pager">
+    <button class="vote nav" id="mine-newer">← newer</button>
+    <span id="mine-page" class="muted"></span>
+    <button class="vote nav" id="mine-older">older →</button>
+  </div>
+</section>
+
+<section id="empty" class="center" hidden>
+  <h2>Nothing left to show in this tab 🎉</h2>
+  <p>You have voted on or skipped every remaining query here (or every query without votes, if that filter is on).
+     Try the other tab, switch the filter off, or review your answers under <b>My votes</b>. Thank you!</p>
+</section>
+
+<section id="error" class="center banner" hidden>
+  <h2>Something went wrong</h2>
+  <p id="error-msg"></p>
+  <button class="vote" id="btn-retry">Try again</button>
+</section>
+
+<section id="loading" class="center"><p>Loading…</p></section>
+
+<footer class="votebar" id="votebar" hidden>
+  <button class="vote nav" id="btn-back" title="see and change your previous vote (←)">← Previous</button>
+  <button class="vote yes" id="btn-yes"><span class="ico">👍</span> Findable <kbd>1</kbd></button>
+  <button class="vote no" id="btn-no"><span class="ico">👎</span> Not findable <kbd>2</kbd></button>
+  <button class="vote skip" id="btn-skip">Skip <kbd>S</kbd></button>
+  <button class="vote nav" id="btn-note" hidden title="this query has its 3 votes: send a remark to the admin instead (N)">✉ Note to admin</button>
+  <button class="vote nav" id="btn-fwd" hidden>Back to voting ↩</button>
+</footer>
+
+<div id="toast" class="toast" hidden></div>
+
+<dialog id="dlg-help">
+  <h1>How to vote</h1>
+  <p>You will see a <b>query image</b>, either a photo of a hotel room or a crop showing one object in it (a lamp,
+     a bed, artwork…), next to <b>all the photos we have of that hotel</b>. Decide whether the hotel could be
+     identified from the query using those photos.</p>
+  <ul class="rubric">
+    <li><span class="tag yes">👍 Findable</span> At least one hotel photo shows the <b>same room</b> or the <b>same
+        distinctive things</b> (furniture, artwork, fixtures, layout, materials). A careful person could match them.</li>
+    <li><span class="tag no">👎 Not findable</span> Nothing in the hotel photos could be matched to the query: different
+        rooms, only generic items, or the details that would be needed are not visible.</li>
+    <li><span class="tag skip">Skip</span> Broken image or you really cannot decide. Skips do not count.</li>
+  </ul>
+  <p>Queries come in a fixed order, hardest first; the goal is <b>one vote per query</b>. If someone already voted on a
+     query you see their votes above the images and can add yours (a query takes at most three). Tick <b>skip queries
+     that already have votes</b> to see only untouched ones, or type a <b>position</b> to continue from there. You will
+     never be shown a query you already answered. When a query already has its three votes you cannot vote on it, but
+     <b>✉ Note to admin</b> appears so you can say, for example, that you disagree with the votes.</p>
+  <p>There is no right answer; go with your best judgement in about ten seconds per query. <b>Room photos</b> and
+     <b>object crops</b> are separate tabs; <b>My votes</b> lists everything you answered, and <b>← Previous</b> lets you
+     revisit and change an answer. Keyboard: <kbd>1</kbd> findable, <kbd>2</kbd> not findable, <kbd>S</kbd> skip,
+     <kbd>N</kbd> note (full queries only), <kbd>←</kbd> previous, <kbd>Esc</kbd> closes an enlarged image.</p>
+  <p class="muted">Your answers are stored under an anonymous annotator code kept in this browser, so you can stop
+     and come back any day. The study passcode is remembered here too.</p>
+  <form method="dialog" class="namerow">
+    <label>Your name or initials <span class="muted">(optional, shown next to your votes to other annotators)</span>
+      <input id="inp-name" maxlength="40" autocomplete="off" placeholder="e.g. AC">
+    </label>
+    <button class="vote yes" id="btn-start" value="ok">Start voting</button>
+  </form>
+  <details class="code">
+    <summary>Continue on another device</summary>
+    <p>Your annotator code: <code id="my-code"></code> <button type="button" class="link" id="btn-copy">copy</button></p>
+    <label>Paste a code from another browser to continue there instead
+      <input id="inp-code" autocomplete="off" spellcheck="false" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+    </label>
+    <p class="muted">Applied when you close this dialog. Your votes from both devices are then counted together.</p>
+  </details>
+</dialog>
+
+<dialog id="dlg-pass">
+  <h1>Study passcode</h1>
+  <p>This page is public, but voting needs the passcode the organiser gave you. It is remembered in this browser.</p>
+  <p class="muted" id="pass-msg"></p>
+  <form method="dialog" class="namerow">
+    <label>Passcode <input id="inp-pass" autocomplete="off" spellcheck="false" required></label>
+    <button class="vote yes" type="submit">Continue</button>
+  </form>
+</dialog>
+
+<dialog id="dlg-note">
+  <h1>Note to the admin</h1>
+  <p class="muted" id="note-ctx"></p>
+  <form method="dialog">
+    <textarea id="inp-note" rows="5" maxlength="2000"
+      placeholder="e.g. voted 2 up / 1 down, but I am certain it is not findable: the only shared item is a generic lamp"></textarea>
+    <div class="namerow right">
+      <button class="vote nav" type="submit" value="cancel">Cancel</button>
+      <button class="vote yes" type="submit" value="send">Send note</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="lightbox" hidden><div id="lightbox-cell"></div></div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
