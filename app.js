@@ -1,10 +1,10 @@
-// Findability voting page.  Plain browser JS, no build step, no dependencies.
-// Talks to Supabase through six RPC functions (../supabase/schema.sql) and fetches the per-hotel JSON + WebP
-// thumbnails produced by ../build_study.py from DATA_BASE_URL.  A "cell" is {src, w, h}: thumbnail path and size.
+// OpenHotels findability — voting page.  Plain browser JS, no build step, no dependencies.
+// Talks to Supabase through six RPC functions (supabase/schema.sql in the study repo) and fetches the per-hotel JSON
+// + WebP thumbnails produced by build_study.py from DATA_BASE_URL.  A "cell" is {src, w, h}: thumbnail path and size.
 (() => {
   const C = window.STUDY_CONFIG;
   const $ = (id) => document.getElementById(id);
-  const debug = new URLSearchParams(location.search).has("debug");   // ?debug=1 shows qid, hotel id, similarities
+  const debug = new URLSearchParams(location.search).has("debug");   // ?debug=1 adds model details to the metadata
   const SPLITS = {
     test_non_object: { label: "room photos" },
     test_object: { label: "object crops" },
@@ -13,7 +13,9 @@
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const PAGE = 60;                                   // items per page in "My votes"
   const MAX_VOTES = 3;
-  const labelText = (l) => (l === "findable" ? "👍 Findable" : "👎 Not findable");
+  const labelText = (l) => (l === "findable" ? "Findable" : "Not findable");
+  const fmt = (n) => Number(n || 0).toLocaleString();
+  const imageId = (src) => String(src || "").replace(/^thumbs[/]/, "").replace(/\.(webp|jpg|jpeg|png)$/i, "");
 
   // ── identity: a random code kept in this browser ─────────────────────────────────────────────────
   const store = {
@@ -69,25 +71,35 @@
     for (const p of paths) if (!preloaded.has(p)) { preloaded.add(p); const im = new Image(); im.src = dataUrl(p); }
   }
 
-  // ── cells ────────────────────────────────────────────────────────────────────────────────────────
+  // ── small dom helpers ────────────────────────────────────────────────────────────────────────────
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  function icon(id) {
+    const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const u = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    u.setAttribute("href", `#${id}`); s.append(u); s.setAttribute("aria-hidden", "true");
+    return s;
+  }
   function cellEl(cell) {
-    const box = document.createElement("div");
-    box.className = "cell";
+    const box = el("div", "cell");
     box.style.aspectRatio = `${cell.w} / ${cell.h}`;
-    const im = document.createElement("img");
+    const im = el("img");
     im.src = dataUrl(cell.src); im.width = cell.w; im.height = cell.h; im.alt = ""; im.decoding = "async"; im.draggable = false;
     box.append(im);
     return box;
   }
   function framedCell(cell, frameAr) {                // letterbox a cell into a fixed-ratio frame
-    const frame = document.createElement("div");
-    frame.className = "frame";
+    const frame = el("div", "frame");
     frame.style.aspectRatio = `${frameAr}`;
     const box = cellEl(cell);
     const ar = cell.w / cell.h;
     box.style.width = ar >= frameAr ? "100%" : `${(100 * ar / frameAr).toFixed(3)}%`;
     frame.append(box);
     return frame;
+  }
+  function hotelLine(hotel) {
+    const h = (hotel && hotel.hotel) || {};
+    const place = [h.city, h.country].filter(Boolean).join(", ");
+    return { title: h.name || "name unknown", place };
   }
 
   // ── state ────────────────────────────────────────────────────────────────────────────────────────
@@ -133,7 +145,7 @@
         L.next.catch(() => {});
       }
       if (tab === split && !review) {
-        if (q) { renderQuery(q, null); if (q.wrapped) toast("Reached the end of the list, continuing from the start."); }
+        if (q) { renderQuery(q, null); if (q.wrapped) toast("Reached the end of the list; continuing from the start."); }
         else showEmpty();
       }
     } catch (e) {
@@ -154,19 +166,15 @@
     t.classList.toggle("full", !!q.full);
     t.replaceChildren();
     if (!v.n) {
-      t.textContent = "No votes yet: you are the first.";
+      t.append("No votes yet. You are the first.");
     } else {
-      const strong = document.createElement("b");
-      strong.textContent = `Votes so far: 👍 ${v.up} · 👎 ${v.down}`;
-      t.append(strong);
+      t.append(el("b", null, `Votes so far: ${v.up} findable · ${v.down} not findable`));
       if (v.voters && v.voters.length) {
-        const names = document.createElement("span"); names.className = "names";
-        names.textContent = "  (" + v.voters.map((x) => `${x.label === "findable" ? "👍" : "👎"} ${x.name || "anonymous"}`).join(", ") + ")";
-        t.append(names);
+        t.append(el("span", "names", "(" + v.voters.map((x) => `${x.label === "findable" ? "findable" : "not findable"}: ${x.name || "anonymous"}`).join(", ") + ")"));
       }
-      if (q.full) t.append(rev
-        ? ` · This query has its ${MAX_VOTES} votes. You can still change your own answer, or send a note to the admin.`
-        : ` · This query already has its ${MAX_VOTES} votes, so a fourth cannot be added. If you disagree, send a note to the admin.`);
+      if (q.full) t.append(el("span", null, rev
+        ? `This query has its ${MAX_VOTES} votes. You can still change your own answer, or send a note to the admin.`
+        : `This query already has its ${MAX_VOTES} votes, so a fourth cannot be added. If you disagree, send a note to the admin.`));
     }
     t.hidden = false;
   }
@@ -175,50 +183,59 @@
     const info = q.hotel.queries[q.qid];
     const isObj = info ? info.is_object : q.qid.startsWith("test_object");
     $("q-kind").textContent = isObj ? `crop of a ${q.kind}` : `${q.kind} photo`;
-    $("q-meta").textContent = debug ? `${q.qid} · hotel ${q.hotel_id}${info ? ` · best sim ${info.best_sim}` : ""} · rank ${q.rank}` : "";
 
-    const qc = $("q-cell"); qc.replaceChildren();
+    const qc = $("q-cell"); qc.replaceChildren(); qc.classList.remove("flash-yes", "flash-no");
     const box = cellEl(q.cell); box.classList.add("qbox");
     const ar = q.cell.w / q.cell.h;
     if (ar < 1) box.style.width = `${Math.round(ar * 90)}%`;              // keep portrait queries from getting too tall
     box.addEventListener("click", () => lightbox(q.cell));
     qc.append(box);
 
+    const hl = hotelLine(q.hotel);
+    const mh = $("m-hotel"); mh.replaceChildren();
+    mh.append(el("span", "tnum", q.hotel_id), ` · ${hl.title}`);
+    if (hl.place) mh.append(el("span", "sub", hl.place));
+    $("m-image").textContent = imageId(q.cell.src);
+    $("m-qid").textContent = `${q.qid} · position ${fmt(q.rank + 1)}`;
+    $("m-debug-row").hidden = !debug;
+    if (debug) $("m-debug").textContent = `best sim ${info ? info.best_sim : "?"} · rank ${q.rank} · room ${info ? info.room : "?"}`;
+
     const gal = q.hotel.gallery;
     const sims = info ? info.sims : null;
     const order = gal.map((_, i) => i);
-    if (sims) order.sort((a, b) => sims[b] - sims[a]);                     // most similar first (scores stay hidden)
-    $("g-meta").textContent = `${gal.length} photo${gal.length === 1 ? "" : "s"}`;
+    if (sims) order.sort((a, b) => sims[b] - sims[a]);                     // most similar first
+    $("g-count").textContent = fmt(gal.length);
     const grid = $("g-grid"); grid.replaceChildren();
     for (const i of order) {
       const g = gal[i];
-      const card = document.createElement("figure"); card.className = "card";
+      const card = el("figure", "card");
       const fr = framedCell(g, 4 / 3);
+      fr.title = `${imageId(g.src)}${g.room ? ` · room ${g.room}` : ""}`;
       fr.addEventListener("click", () => lightbox(g));
-      const cap = document.createElement("figcaption");
-      cap.textContent = (g.view || "—") + (debug ? ` · room ${g.room} · sim ${sims ? sims[i] : "?"}` : "");
+      const cap = el("figcaption");
+      cap.append(el("span", "view-type", g.view || "unlabelled"));
+      const sim = el("span", "sim"); sim.append("sim ", el("b", null, sims ? Number(sims[i]).toFixed(3) : "–"));
+      cap.append(sim);
       card.append(fr, cap); grid.append(card);
     }
 
     renderTally(q, rev);
     const b = $("review-banner");
     if (rev) {
-      b.hidden = false;
-      b.replaceChildren();
-      const when = new Date(rev.created_at).toLocaleString();
-      b.append(`Reviewing your answer ${rev.total - rev.offset} of ${rev.total} for ${SPLITS[rev.split].label} (cast ${when}${rev.updated_at ? ", changed later" : ""}): `);
-      const strong = document.createElement("b"); strong.textContent = labelText(rev.label); b.append(strong);
-      b.append(". Click the other button to change it.");
+      b.hidden = false; b.replaceChildren();
+      const when = new Date(rev.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+      b.append(`Your answer ${rev.total - rev.offset} of ${rev.total} for ${SPLITS[rev.split].label}, cast ${when}${rev.updated_at ? ", changed later" : ""}: `);
+      b.append(el("b", null, labelText(rev.label)), ". Press the other button to change it.");
     } else {
       b.hidden = true;
     }
     $("btn-yes").classList.toggle("selected", !!rev && rev.label === "findable");
     $("btn-no").classList.toggle("selected", !!rev && rev.label === "not_findable");
     $("btn-skip").hidden = !!rev;
-    $("btn-fwd").hidden = !rev;
-    $("btn-back").textContent = rev ? "← Older" : "← Previous";
-    $("btn-fwd").textContent = rev && rev.offset > 0 ? "Newer →" : "Back to voting ↩";
-    $("controls").hidden = !!rev;
+    $("btn-exit").hidden = !rev;
+    $("btn-fwd").hidden = !(rev && rev.offset > 0);
+    $("btn-back-label").textContent = rev ? "Older" : "Previous";
+    $("toolbar").hidden = !!rev;
 
     showView("vote"); $("votebar").hidden = false; hide("loading"); hide("empty"); hide("error");
     renderCounts(); refreshButtons();
@@ -244,7 +261,7 @@
         if (progress[tab]) { progress[tab].votes += 1; if (q.votes.n === 0) progress[tab].voted += 1; }
         renderCounts();
       } else if (res.status === "full") {
-        toast("Someone else just cast the third vote on that one, so yours was not counted. Next!");
+        toast("Someone else just cast the third vote on that one, so yours was not counted. Next.");
       } else if (res.status !== "already_voted") {
         throw new Error(`Vote rejected: ${res.status}`);
       }
@@ -268,7 +285,7 @@
       const v = r.q.votes;
       if (res.status === "ok" && v && v.n) { if (label === "findable") { v.up += 1; v.down -= 1; } else { v.up -= 1; v.down += 1; } }
       r.vote.label = label; r.vote.updated_at = new Date().toISOString();
-      toast(`Changed to ${labelText(label)}.`);
+      toast(`Changed to ${labelText(label).toLowerCase()}.`);
       renderQuery(r.q, { ...r.vote, split: r.split, offset: r.offset, total: r.total });
     } catch (e) {
       showError(e);
@@ -288,7 +305,7 @@
     await advance(tab);
   }
 
-  // ── notes to the admin ───────────────────────────────────────────────────────────────────────────
+  // ── notes to the admin (only on queries that already have their 3 votes) ─────────────────────────
   const dlgNote = $("dlg-note");
   function currentQuery() { return review ? review.q : (isSplit(tab) ? live[tab].cur : null); }
   function openNote() {
@@ -296,7 +313,7 @@
     if (!q || dlgNote.open || busy) return;
     if (!q.full) { toast(`Notes can only be sent for queries that already have their ${MAX_VOTES} votes.`); return; }
     const v = q.votes || { n: 0, up: 0, down: 0 };
-    $("note-ctx").textContent = `About this ${q.kind} query (position ${q.rank + 1}, hotel ${q.hotel_id}). Votes so far: 👍 ${v.up} · 👎 ${v.down}. The admin reads these; other annotators do not see them.`;
+    $("note-ctx").textContent = `About ${q.qid} (hotel ${q.hotel_id}, position ${fmt(q.rank + 1)}). Votes so far: ${v.up} findable, ${v.down} not findable. Only the admin reads these.`;
     $("inp-note").value = "";
     dlgNote.showModal();
   }
@@ -309,7 +326,7 @@
       const res = await rpc("add_note", { p_user: userId, p_qid: q.qid, p_note: text, p_name: userName || null });
       if (res.status === "not_full") { toast("This query does not have its three votes yet, so no note was stored."); return; }
       if (res.status !== "ok") throw new Error(`Note rejected: ${res.status}`);
-      toast("Note sent to the admin. Thank you!");
+      toast("Note sent to the admin. Thank you.");
     } catch (e) { showError(e); }
   });
 
@@ -347,30 +364,33 @@
 
   // ── "My votes" tab ───────────────────────────────────────────────────────────────────────────────
   async function renderMine() {
-    showView("mine"); $("votebar").hidden = true; hide("empty"); hide("error"); $("loading").hidden = false;
+    showView("mine"); $("votebar").hidden = true; $("toolbar").hidden = true; hide("empty"); hide("error"); $("loading").hidden = false;
     for (const b of $("mine-seg").querySelectorAll("button")) b.classList.toggle("active", b.dataset.split === mine.split);
     try {
       const res = await rpc("my_votes", { p_user: userId, p_split: mine.split, p_limit: PAGE, p_offset: mine.page * PAGE });
       myCounts[mine.split] = res.total; renderCounts();
       const grid = $("mine-grid"); grid.replaceChildren();
       res.votes.forEach((v, i) => {
-        const item = document.createElement("figure"); item.className = "item";
+        const item = el("figure", "item"); item.tabIndex = 0; item.setAttribute("role", "button");
         const fr = framedCell(v.cell, 4 / 3);
-        const badge = document.createElement("span");
-        badge.className = `badge ${v.label === "findable" ? "yes" : "no"}`; badge.textContent = v.label === "findable" ? "👍" : "👎";
+        const badge = el("span", `badge ${v.label === "findable" ? "yes" : "no"}`);
+        badge.title = labelText(v.label); badge.append(icon(v.label === "findable" ? "i-up" : "i-down"));
         fr.append(badge);
-        const cap = document.createElement("figcaption");
+        const cap = el("figcaption");
         const tv = v.votes || {};
-        cap.textContent = `${v.kind} · all: 👍${tv.up ?? "?"} 👎${tv.down ?? "?"}${v.updated_at ? " · changed" : ""}`;
+        cap.append(el("span", "tnum", `${v.hotel_id} · ${imageId(v.cell.src)}`), document.createElement("br"),
+                   `${v.kind} · all: ${tv.up ?? "?"} findable, ${tv.down ?? "?"} not${v.updated_at ? " · changed" : ""}`);
         item.append(fr, cap);
-        item.addEventListener("click", () => openReview(mine.split, mine.page * PAGE + i));
+        const open = () => openReview(mine.split, mine.page * PAGE + i);
+        item.addEventListener("click", open);
+        item.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); open(); } });
         grid.append(item);
       });
       preload(res.votes.map((v) => v.cell.src));
       const pages = Math.max(1, Math.ceil(res.total / PAGE));
       if (mine.page >= pages && mine.page > 0) { mine.page = pages - 1; return renderMine(); }
       $("mine-page").textContent = res.total
-        ? `${mine.page * PAGE + 1}–${Math.min((mine.page + 1) * PAGE, res.total)} of ${res.total}` : "no votes yet in this category";
+        ? `${fmt(mine.page * PAGE + 1)}–${fmt(Math.min((mine.page + 1) * PAGE, res.total))} of ${fmt(res.total)}` : "no votes yet in this category";
       $("mine-newer").disabled = mine.page === 0;
       $("mine-older").disabled = mine.page + 1 >= pages;
     } catch (e) {
@@ -387,11 +407,13 @@
     const L = live[t];
     if (L.cur) renderQuery(L.cur, null); else advance(t);
   }
-  function renderTabs() { for (const el of document.querySelectorAll(".tab")) el.classList.toggle("active", el.dataset.tab === tab); }
+  function renderTabs() {
+    for (const e of document.querySelectorAll(".tab")) { const on = e.dataset.tab === tab; e.classList.toggle("active", on); e.setAttribute("aria-selected", on ? "true" : "false"); }
+  }
   function showView(name) { $("view-vote").hidden = name !== "vote"; $("view-mine").hidden = name !== "mine"; }
   function showEmpty() { $("view-vote").hidden = true; $("votebar").hidden = true; hide("loading"); $("empty").hidden = false; }
 
-  // ── small ui helpers ─────────────────────────────────────────────────────────────────────────────
+  // ── ui helpers ───────────────────────────────────────────────────────────────────────────────────
   const hide = (id) => { $(id).hidden = true; };
   function refreshButtons() {
     const q = isSplit(tab) ? live[tab].cur : null;
@@ -403,26 +425,26 @@
     $("btn-note").hidden = !(shown && shown.full);       // notes only for queries that already have their 3 votes
     $("btn-note").disabled = !can;
     $("btn-back").disabled = busy || (review ? review.offset + 1 >= review.total : !(isSplit(tab) && myCounts[tab] > 0));
-    $("btn-fwd").disabled = busy;
+    $("btn-fwd").disabled = busy; $("btn-exit").disabled = busy;
     $("chk-skip-voted").checked = skipVoted;
   }
   function renderCounts() {
     let total = 0;
     for (const s of Object.keys(SPLITS)) {
       const n = myCounts[s] || 0; total += n;
-      $(`cnt-${s}`).textContent = n ? n.toLocaleString() : "";
-      $(`mcnt-${s}`).textContent = `(${n.toLocaleString()})`;
+      $(`cnt-${s}`).textContent = n ? fmt(n) : "";
+      $(`mcnt-${s}`).textContent = fmt(n);
     }
-    $("cnt-mine").textContent = total ? total.toLocaleString() : "";
-    $("mine-title").textContent = total ? `You have voted on ${total.toLocaleString()} quer${total === 1 ? "y" : "ies"}` : "Your votes";
+    $("cnt-mine").textContent = total ? fmt(total) : "";
+    $("mine-title").textContent = total ? `You have voted on ${fmt(total)} quer${total === 1 ? "y" : "ies"}` : "Your votes";
     if (isSplit(tab) && progress[tab]) {
       const p = progress[tab]; const q = live[tab].cur;
-      $("status").textContent = `${SPLITS[tab].label}: ` + (q ? `position ${(q.rank + 1).toLocaleString()} of ${p.queries.toLocaleString()} (hardest first) · ` : "") +
-        `${p.voted.toLocaleString()} of ${p.queries.toLocaleString()} have a vote · ${p.votes.toLocaleString()} votes in total · you have voted on ${(myCounts[tab] || 0).toLocaleString()} here`;
+      $("status-pos").textContent = q ? `Position ${fmt(q.rank + 1)} of ${fmt(p.queries)}, hardest first` : `${fmt(p.queries)} ${SPLITS[tab].label}, hardest first`;
+      $("status-progress").textContent = `${fmt(p.voted)} have a vote · ${fmt(p.votes)} votes · you ${fmt(myCounts[tab] || 0)}`;
       $("inp-pos").max = String(p.queries);
     }
   }
-  function renderName() { $("btn-name").textContent = userName ? `👤 ${userName}` : "👤 set your name"; }
+  function renderName() { $("name-label").textContent = userName || "Set your name"; }
   function showError(e) {
     hide("loading");
     if (e instanceof PassError) { openPass(e.message); return; }
@@ -436,14 +458,14 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3000);
   }
   function flash(label) {
-    const el = $("q-cell").firstElementChild; if (!el) return;
-    const cls = label === "findable" ? "flash-yes" : "flash-no";
-    el.classList.remove("flash-yes", "flash-no"); void el.offsetWidth; el.classList.add(cls);
+    const qc = $("q-cell");
+    qc.classList.remove("flash-yes", "flash-no"); void qc.offsetWidth;
+    qc.classList.add(label === "findable" ? "flash-yes" : "flash-no");
   }
   function lightbox(cell) {
     const wrap = $("lightbox-cell"); wrap.replaceChildren();
     const box = cellEl(cell); const ar = cell.w / cell.h;
-    box.style.width = `${Math.round(Math.min(window.innerWidth * 0.96, window.innerHeight * 0.94 * ar))}px`;
+    box.style.width = `${Math.round(Math.min(window.innerWidth * 0.94, window.innerHeight * 0.92 * ar))}px`;
     wrap.append(box); $("lightbox").hidden = false;
   }
   $("lightbox").addEventListener("click", () => { $("lightbox").hidden = true; });
@@ -493,7 +515,7 @@
   });
 
   // ── wiring ───────────────────────────────────────────────────────────────────────────────────────
-  for (const el of document.querySelectorAll(".tab")) el.addEventListener("click", () => { if (!busy) showTab(el.dataset.tab); });
+  for (const e of document.querySelectorAll(".tab")) e.addEventListener("click", () => { if (!busy) showTab(e.dataset.tab); });
   for (const b of $("mine-seg").querySelectorAll("button")) b.addEventListener("click", () => {
     mine.split = b.dataset.split; mine.page = 0; store.set("fs_mine_split", mine.split); renderMine();
   });
@@ -508,19 +530,19 @@
     if (review) { if (review.offset + 1 < review.total) openReview(review.split, review.offset + 1); }
     else if (isSplit(tab)) openReview(tab, 0);
   });
-  $("btn-fwd").addEventListener("click", () => {
-    if (busy || !review) return;
-    if (review.offset > 0) openReview(review.split, review.offset - 1); else exitReview();
-  });
+  $("btn-fwd").addEventListener("click", () => { if (!busy && review && review.offset > 0) openReview(review.split, review.offset - 1); });
+  $("btn-exit").addEventListener("click", () => { if (!busy && review) exitReview(); });
   $("btn-retry").addEventListener("click", () => {
     hide("error");
     if (tab === "mine") renderMine();
     else if (review) { const r = review; review = null; openReview(r.split, r.offset); }
     else { live[tab].next = null; if (live[tab].cur) renderQuery(live[tab].cur, null); else advance(tab); }
   });
+  $("lightbox-close").addEventListener("click", (ev) => { ev.stopPropagation(); $("lightbox").hidden = true; });
   $("chk-skip-voted").addEventListener("change", (ev) => {
     if (busy) { ev.target.checked = skipVoted; return; }
     skipVoted = ev.target.checked; store.set("fs_skip_voted", skipVoted ? "1" : "0");
+    toast(skipVoted ? "Showing only queries without votes." : "Showing every query in order, including voted ones.");
     if (isSplit(tab) && !review) restart(tab);
   });
   $("jump-form").addEventListener("submit", (ev) => {
