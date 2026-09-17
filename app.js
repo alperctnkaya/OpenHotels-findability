@@ -232,6 +232,7 @@
     if (hl.place) mh.append(el("span", "sub", hl.place));
     $("m-image").textContent = imageId(q.cell.src);
     $("m-qid").textContent = `${q.qid} · position ${fmt(q.rank + 1)}`;
+    $("m-date").textContent = (info && info.date) || "unknown";
     $("m-debug-row").hidden = !debug;
     if (debug) $("m-debug").textContent = `best sim ${info ? info.best_sim : "?"} · rank ${q.rank} · room ${info ? info.room : "?"}`;
 
@@ -250,7 +251,7 @@
       const cap = el("figcaption");
       cap.append(el("span", "view-type", g.view || "unlabelled"));
       const sim = el("span", "sim"); sim.append("sim ", el("b", null, sims ? Number(sims[i]).toFixed(3) : "–"));
-      cap.append(sim);
+      cap.append(sim, el("span", "date tnum", g.date ? `taken ${g.date}` : "date unknown"));
       card.append(fr, cap); grid.append(card);
     }
 
