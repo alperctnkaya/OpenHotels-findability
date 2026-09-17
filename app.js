@@ -127,7 +127,42 @@
     const hotel = await fetchHotel(res.hotel_id);
     preload([res.cell.src, ...hotel.gallery.map((g) => g.src)]);
     return { qid: res.qid, hotel_id: res.hotel_id, idx: res.idx, kind: res.kind, rank: res.queue_rank, full: !!res.full,
-             votes: res.votes || { n: 0, up: 0, down: 0, voters: [] }, wrapped: !!res.wrapped, cell: res.cell, hotel };
+             votes: res.votes || { n: 0, up: 0, down: 0, voters: [] }, wrapped: !!res.wrapped, cell: res.cell, hotel,
+             myVote: res.my_vote || null, skipped: !!res.skipped };
+  }
+
+  // "Go to": show exactly the query at this position, whatever its votes and whatever the filter says.  One the user
+  // already answered opens in review (so it can be changed); the queue then continues after it.
+  async function jumpTo(split, rank) {
+    busy = true; refreshButtons(); hide("error"); $("loading").hidden = false;
+    const L = live[split]; L.cur = null; L.next = null; review = null;
+    try {
+      const res = await rpc("next_query", { p_user: userId, p_split: split, p_from_rank: rank, p_skip_voted: false, p_exclude: null, p_exact: true });
+      if (res.error) throw new Error(`next_query: ${res.error}`);
+      progress[split] = res.progress; if (res.mine) myCounts = { ...myCounts, ...res.mine };
+      if (!res.qid) { toast(`There is no position ${fmt(rank + 1)}.`); advance(split); return; }
+      const hotel = await fetchHotel(res.hotel_id);
+      preload([res.cell.src, ...hotel.gallery.map((g) => g.src)]);
+      const tally = res.votes || { n: 0, up: 0, down: 0, voters: [] };
+      const q = { qid: res.qid, hotel_id: res.hotel_id, idx: res.idx, kind: res.kind, rank: res.queue_rank, full: !!res.full,
+                  votes: tally, wrapped: false, cell: res.cell, hotel };
+      pos[split] = q.rank + 1; store.set(`fs_pos_${split}`, String(q.rank));
+      L.next = pull(split, q.rank + 1, q.qid); L.next.catch(() => {});
+      if (res.my_vote) {                                   // already answered: open it as a review of that answer
+        review = { split, offset: null, total: myCounts[split] || 0, vote: { qid: q.qid, ...res.my_vote }, q };
+        if (tab === split) renderQuery(q, { ...res.my_vote, split, offset: null, total: review.total });
+        toast(`You already answered position ${fmt(q.rank + 1)}; you can change it here.`);
+      } else {
+        L.cur = q;
+        if (tab === split) renderQuery(q, null);
+        if (res.skipped) toast("You skipped this one earlier.");
+        else if (skipVoted && tally.n) toast("Showing the exact position you asked for, even though it already has votes.");
+      }
+    } catch (e) {
+      if (tab === split) showError(e);
+    } finally {
+      busy = false; refreshButtons();
+    }
   }
 
   async function advance(split) {
@@ -224,7 +259,8 @@
     if (rev) {
       b.hidden = false; b.replaceChildren();
       const when = new Date(rev.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-      b.append(`Your answer ${rev.total - rev.offset} of ${rev.total} for ${SPLITS[rev.split].label}, cast ${when}${rev.updated_at ? ", changed later" : ""}: `);
+      const which = rev.offset == null ? "Your answer for this query" : `Your answer ${rev.total - rev.offset} of ${rev.total} for ${SPLITS[rev.split].label}`;
+      b.append(`${which}, cast ${when}${rev.updated_at ? ", changed later" : ""}: `);
       b.append(el("b", null, labelText(rev.label)), ". Press the other button to change it.");
     } else {
       b.hidden = true;
@@ -233,9 +269,9 @@
     $("btn-no").classList.toggle("selected", !!rev && rev.label === "not_findable");
     $("btn-skip").hidden = !!rev;
     $("btn-exit").hidden = !rev;
-    $("btn-fwd").hidden = !(rev && rev.offset > 0);
+    $("btn-fwd").hidden = !(rev && rev.offset != null && rev.offset > 0);
     $("btn-back-label").textContent = rev ? "Older" : "Previous";
-    $("toolbar").hidden = !!rev;
+    $("toolbar").hidden = false;
 
     showView("vote"); $("votebar").hidden = false; hide("loading"); hide("empty"); hide("error");
     renderCounts(); refreshButtons();
@@ -378,7 +414,7 @@
         fr.append(badge);
         const cap = el("figcaption");
         const tv = v.votes || {};
-        cap.append(el("span", "tnum", `${v.hotel_id} · ${imageId(v.cell.src)}`), document.createElement("br"),
+        cap.append(el("b", "tnum", `#${fmt(v.queue_rank + 1)}`), el("span", "tnum", ` · hotel ${v.hotel_id} · ${imageId(v.cell.src)}`), document.createElement("br"),
                    `${v.kind} · all: ${tv.up ?? "?"} findable, ${tv.down ?? "?"} not${v.updated_at ? " · changed" : ""}`);
         item.append(fr, cap);
         const open = () => openReview(mine.split, mine.page * PAGE + i);
@@ -424,7 +460,7 @@
     $("btn-skip").disabled = !can || !!review;
     $("btn-note").hidden = !(shown && shown.full);       // notes only for queries that already have their 3 votes
     $("btn-note").disabled = !can;
-    $("btn-back").disabled = busy || (review ? review.offset + 1 >= review.total : !(isSplit(tab) && myCounts[tab] > 0));
+    $("btn-back").disabled = busy || (review ? (review.offset == null || review.offset + 1 >= review.total) : !(isSplit(tab) && myCounts[tab] > 0));
     $("btn-fwd").disabled = busy; $("btn-exit").disabled = busy;
     $("chk-skip-voted").checked = skipVoted;
   }
@@ -495,8 +531,15 @@
   const dlg = $("dlg-help");
   function openHelp() { $("inp-name").value = userName; $("my-code").textContent = userId; $("inp-code").value = ""; dlg.showModal(); }
   dlg.addEventListener("close", () => {
-    userName = $("inp-name").value.trim().slice(0, 40);
+    const newName = $("inp-name").value.trim().slice(0, 40);
+    const renamed = newName !== userName;
+    userName = newName;
     store.set("fs_user_name", userName); store.set("fs_seen_help", "1"); renderName();
+    if (renamed && passcode) {                            // earlier anonymous (or differently named) votes get the new name too
+      rpc("set_name", { p_user: userId, p_name: userName || null })
+        .then((r) => { if (r.status === "ok" && r.votes) toast(`Name applied to your ${fmt(r.votes)} earlier vote${r.votes === 1 ? "" : "s"}.`); })
+        .catch(() => {});
+    }
     const code = $("inp-code").value.trim().toLowerCase();
     if (code && UUID_RE.test(code) && code !== userId) {
       userId = code; store.set("fs_user_id", code);
@@ -527,15 +570,15 @@
   $("btn-note").addEventListener("click", openNote);
   $("btn-back").addEventListener("click", () => {
     if (busy) return;
-    if (review) { if (review.offset + 1 < review.total) openReview(review.split, review.offset + 1); }
+    if (review) { if (review.offset != null && review.offset + 1 < review.total) openReview(review.split, review.offset + 1); }
     else if (isSplit(tab)) openReview(tab, 0);
   });
-  $("btn-fwd").addEventListener("click", () => { if (!busy && review && review.offset > 0) openReview(review.split, review.offset - 1); });
+  $("btn-fwd").addEventListener("click", () => { if (!busy && review && review.offset != null && review.offset > 0) openReview(review.split, review.offset - 1); });
   $("btn-exit").addEventListener("click", () => { if (!busy && review) exitReview(); });
   $("btn-retry").addEventListener("click", () => {
     hide("error");
     if (tab === "mine") renderMine();
-    else if (review) { const r = review; review = null; openReview(r.split, r.offset); }
+    else if (review) { const r = review; review = null; if (r.offset == null) jumpTo(r.split, r.q.rank); else openReview(r.split, r.offset); }
     else { live[tab].next = null; if (live[tab].cur) renderQuery(live[tab].cur, null); else advance(tab); }
   });
   $("lightbox-close").addEventListener("click", (ev) => { ev.stopPropagation(); $("lightbox").hidden = true; });
@@ -547,13 +590,12 @@
   });
   $("jump-form").addEventListener("submit", (ev) => {
     ev.preventDefault();
-    if (busy || !isSplit(tab) || review) return;
+    if (busy || !isSplit(tab)) return;
     const p = progress[tab]; const n = parseInt($("inp-pos").value, 10);
     if (!p || !Number.isFinite(n)) { toast("Type a position number first."); return; }
     const clamped = Math.min(Math.max(n, 1), p.queries);
-    pos[tab] = clamped - 1; store.set(`fs_pos_${tab}`, String(pos[tab]));
     $("inp-pos").value = ""; $("inp-pos").blur();
-    restart(tab);
+    jumpTo(tab, clamped - 1);
   });
   document.addEventListener("keydown", (ev) => {
     if (dlg.open || dlgNote.open || dlgPass.open || ["INPUT", "TEXTAREA"].includes(ev.target.tagName)) return;
