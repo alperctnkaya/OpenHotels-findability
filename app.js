@@ -233,8 +233,11 @@
     $("m-image").textContent = imageId(q.cell.src);
     $("m-qid").textContent = `${q.qid} · position ${fmt(q.rank + 1)}`;
     $("m-date").textContent = (info && info.date) || "unknown";
+    const room = info && info.room;
+    $("m-room-row").hidden = !room;
+    if (room) $("m-room").textContent = room;
     $("m-debug-row").hidden = !debug;
-    if (debug) $("m-debug").textContent = `best sim ${info ? info.best_sim : "?"} · rank ${q.rank} · room ${info ? info.room : "?"}`;
+    if (debug) $("m-debug").textContent = `best sim ${info ? info.best_sim : "?"} · rank ${q.rank}`;
 
     const gal = q.hotel.gallery;
     const sims = info ? info.sims : null;
@@ -251,7 +254,7 @@
       const cap = el("figcaption");
       cap.append(el("span", "view-type", g.view || "unlabelled"));
       const sim = el("span", "sim"); sim.append("sim ", el("b", null, sims ? Number(sims[i]).toFixed(3) : "–"));
-      cap.append(sim, el("span", "date tnum", g.date ? `taken ${g.date}` : "date unknown"));
+      cap.append(sim, el("span", "date tnum", [g.room ? `room ${g.room}` : null, g.date ? `taken ${g.date}` : "date unknown"].filter(Boolean).join(" · ")));
       card.append(fr, cap); grid.append(card);
     }
 
