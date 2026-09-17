@@ -176,6 +176,7 @@ svg:not(.sprite) { width: 18px; height: 18px; fill: none; stroke: currentColor; 
 .seg button { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 14px; border: none; background: transparent; color: var(--ink-2); font-weight: 500; }
 .seg button + button { border-left: 1px solid var(--line-2); }
 .seg button.active { background: var(--accent-soft); color: var(--accent); }
+.mine-filters { display: flex; align-items: center; gap: 12px; margin: 6px 0 10px; }
 .mine-grid { grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); margin-top: 14px; }
 .item { margin: 0; min-width: 0; cursor: pointer; }
 .item .frame { border-radius: var(--radius-sm); box-shadow: var(--shadow); transition: box-shadow .15s ease-out; }

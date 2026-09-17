@@ -110,7 +110,9 @@
   for (const s of Object.keys(SPLITS)) pos[s] = Math.max(0, parseInt(store.get(`fs_pos_${s}`) || "0", 10) || 0);
   let skipVoted = store.get("fs_skip_voted") === "1";
   let review = null;                                  // { split, offset, total, vote, q }
-  const mine = { split: isSplit(store.get("fs_mine_split")) ? store.get("fs_mine_split") : "test_non_object", page: 0 };
+  const FILTERS = ["all", "findable", "not_findable", "disagree"];
+  const mine = { split: isSplit(store.get("fs_mine_split")) ? store.get("fs_mine_split") : "test_non_object", page: 0,
+                 filter: FILTERS.includes(store.get("fs_mine_filter")) ? store.get("fs_mine_filter") : "all" };
   let progress = {};                                  // split -> {queries, voted, votes}
   let myCounts = {};                                  // split -> my number of votes
   let busy = false;
@@ -263,7 +265,8 @@
     if (rev) {
       b.hidden = false; b.replaceChildren();
       const when = new Date(rev.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-      const which = rev.offset == null ? "Your answer for this query" : `Your answer ${rev.total - rev.offset} of ${rev.total} for ${SPLITS[rev.split].label}`;
+      const fname = { findable: "findable answers", not_findable: "not-findable answers", disagree: "disagreements" }[rev.filter] || "answers";
+      const which = rev.offset == null ? "Your answer for this query" : `Your ${rev.total - rev.offset} of ${rev.total} ${fname} for ${SPLITS[rev.split].label}`;
       b.append(`${which}, cast ${when}${rev.updated_at ? ", changed later" : ""}: `);
       b.append(el("b", null, labelText(rev.label)), ". Press the other button to change it.");
     } else {
@@ -371,12 +374,13 @@
   });
 
   // ── reviewing earlier votes ──────────────────────────────────────────────────────────────────────
-  async function openReview(split, offset) {
+  async function openReview(split, offset, filter = "all") {
     if (busy) return;
     busy = true; refreshButtons(); hide("error"); $("loading").hidden = false;
     try {
-      const res = await rpc("my_votes", { p_user: userId, p_split: split, p_limit: 1, p_offset: offset });
-      myCounts[split] = res.total;
+      const res = await rpc("my_votes", { p_user: userId, p_split: split, p_limit: 1, p_offset: offset, p_filter: filter });
+      if (res.error) throw new Error(`my_votes: ${res.error}`);
+      if (filter === "all") myCounts[split] = res.total;
       if (!res.votes.length) {
         hide("loading"); toast("You have no votes here yet.");
         if (tab === "mine") renderMine(); else if (review) exitReview();
@@ -387,9 +391,9 @@
       const tally = { ...(v.votes || { n: 1, up: 0, down: 0 }), voters: [] };
       const q = { qid: v.qid, hotel_id: v.hotel_id, idx: v.idx, kind: v.kind, rank: v.queue_rank, full: tally.n >= MAX_VOTES,
                   votes: tally, cell: v.cell, hotel };
-      review = { split, offset, total: res.total, vote: v, q };
+      review = { split, offset, total: res.total, vote: v, q, filter };
       tab = split; store.set("fs_tab", tab); renderTabs();
-      renderQuery(q, { ...v, split, offset, total: res.total });
+      renderQuery(q, { ...v, split, offset, total: res.total, filter });
     } catch (e) {
       showError(e);
     } finally {
@@ -406,9 +410,12 @@
   async function renderMine() {
     showView("mine"); $("votebar").hidden = true; $("toolbar").hidden = true; hide("empty"); hide("error"); $("loading").hidden = false;
     for (const b of $("mine-seg").querySelectorAll("button")) b.classList.toggle("active", b.dataset.split === mine.split);
+    for (const b of $("mine-filter").querySelectorAll("button")) b.classList.toggle("active", b.dataset.filter === mine.filter);
     try {
-      const res = await rpc("my_votes", { p_user: userId, p_split: mine.split, p_limit: PAGE, p_offset: mine.page * PAGE });
-      myCounts[mine.split] = res.total; renderCounts();
+      const res = await rpc("my_votes", { p_user: userId, p_split: mine.split, p_limit: PAGE, p_offset: mine.page * PAGE, p_filter: mine.filter });
+      if (res.error) throw new Error(`my_votes: ${res.error}`);
+      if (mine.filter === "all") myCounts[mine.split] = res.total;
+      renderCounts();
       const grid = $("mine-grid"); grid.replaceChildren();
       res.votes.forEach((v, i) => {
         const item = el("figure", "item"); item.tabIndex = 0; item.setAttribute("role", "button");
@@ -421,7 +428,7 @@
         cap.append(el("b", "tnum", `#${fmt(v.queue_rank + 1)}`), el("span", "tnum", ` · hotel ${v.hotel_id} · ${imageId(v.cell.src)}`), document.createElement("br"),
                    `${v.kind} · all: ${tv.up ?? "?"} findable, ${tv.down ?? "?"} not${v.updated_at ? " · changed" : ""}`);
         item.append(fr, cap);
-        const open = () => openReview(mine.split, mine.page * PAGE + i);
+        const open = () => openReview(mine.split, mine.page * PAGE + i, mine.filter);
         item.addEventListener("click", open);
         item.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); open(); } });
         grid.append(item);
@@ -429,8 +436,9 @@
       preload(res.votes.map((v) => v.cell.src));
       const pages = Math.max(1, Math.ceil(res.total / PAGE));
       if (mine.page >= pages && mine.page > 0) { mine.page = pages - 1; return renderMine(); }
+      const noun = { all: "votes", findable: "findable votes", not_findable: "not-findable votes", disagree: "disagreements" }[mine.filter];
       $("mine-page").textContent = res.total
-        ? `${fmt(mine.page * PAGE + 1)}–${fmt(Math.min((mine.page + 1) * PAGE, res.total))} of ${fmt(res.total)}` : "no votes yet in this category";
+        ? `${fmt(mine.page * PAGE + 1)}–${fmt(Math.min((mine.page + 1) * PAGE, res.total))} of ${fmt(res.total)} ${noun}` : `no ${noun} in this category yet`;
       $("mine-newer").disabled = mine.page === 0;
       $("mine-older").disabled = mine.page + 1 >= pages;
     } catch (e) {
@@ -526,7 +534,7 @@
     hide("error");
     if (!store.get("fs_seen_help")) openHelp();
     if (tab === "mine") renderMine();
-    else if (review) { const r = review; review = null; openReview(r.split, r.offset); }
+    else if (review) { const r = review; review = null; if (r.offset == null) jumpTo(r.split, r.q.rank); else openReview(r.split, r.offset, r.filter); }
     else { for (const s of Object.keys(SPLITS)) live[s] = { cur: null, next: null }; advance(tab); }
   });
   dlgPass.addEventListener("cancel", (ev) => ev.preventDefault());   // Esc does not dismiss it
@@ -566,6 +574,9 @@
   for (const b of $("mine-seg").querySelectorAll("button")) b.addEventListener("click", () => {
     mine.split = b.dataset.split; mine.page = 0; store.set("fs_mine_split", mine.split); renderMine();
   });
+  for (const b of $("mine-filter").querySelectorAll("button")) b.addEventListener("click", () => {
+    mine.filter = b.dataset.filter; mine.page = 0; store.set("fs_mine_filter", mine.filter); renderMine();
+  });
   $("mine-newer").addEventListener("click", () => { if (mine.page > 0) { mine.page -= 1; renderMine(); } });
   $("mine-older").addEventListener("click", () => { mine.page += 1; renderMine(); });
   $("btn-yes").addEventListener("click", () => onLabel("findable"));
@@ -574,15 +585,15 @@
   $("btn-note").addEventListener("click", openNote);
   $("btn-back").addEventListener("click", () => {
     if (busy) return;
-    if (review) { if (review.offset != null && review.offset + 1 < review.total) openReview(review.split, review.offset + 1); }
+    if (review) { if (review.offset != null && review.offset + 1 < review.total) openReview(review.split, review.offset + 1, review.filter); }
     else if (isSplit(tab)) openReview(tab, 0);
   });
-  $("btn-fwd").addEventListener("click", () => { if (!busy && review && review.offset != null && review.offset > 0) openReview(review.split, review.offset - 1); });
+  $("btn-fwd").addEventListener("click", () => { if (!busy && review && review.offset != null && review.offset > 0) openReview(review.split, review.offset - 1, review.filter); });
   $("btn-exit").addEventListener("click", () => { if (!busy && review) exitReview(); });
   $("btn-retry").addEventListener("click", () => {
     hide("error");
     if (tab === "mine") renderMine();
-    else if (review) { const r = review; review = null; if (r.offset == null) jumpTo(r.split, r.q.rank); else openReview(r.split, r.offset); }
+    else if (review) { const r = review; review = null; if (r.offset == null) jumpTo(r.split, r.q.rank); else openReview(r.split, r.offset, r.filter); }
     else { live[tab].next = null; if (live[tab].cur) renderQuery(live[tab].cur, null); else advance(tab); }
   });
   $("lightbox-close").addEventListener("click", (ev) => { ev.stopPropagation(); $("lightbox").hidden = true; });
