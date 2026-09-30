@@ -278,7 +278,7 @@
     $("btn-exit").hidden = !rev;
     $("btn-fwd").hidden = !(rev && rev.offset != null && rev.offset > 0);
     $("btn-back-label").textContent = rev ? "Older" : "Previous";
-    $("toolbar").hidden = false;
+    $("toolbar").hidden = !progress[tab];
 
     showView("vote"); $("votebar").hidden = false; hide("loading"); hide("empty"); hide("error");
     renderCounts(); refreshButtons();
@@ -416,6 +416,8 @@
       if (res.error) throw new Error(`my_votes: ${res.error}`);
       if (mine.filter === "all") myCounts[mine.split] = res.total;
       renderCounts();
+      const other = mine.split === "test_non_object" ? "test_object" : "test_non_object";
+      if (myCounts[other] == null) rpc("my_votes", { p_user: userId, p_split: other, p_limit: 1, p_offset: 0, p_filter: "all" }).then((r) => { myCounts[other] = r.total; renderCounts(); }).catch(() => {});
       const grid = $("mine-grid"); grid.replaceChildren();
       res.votes.forEach((v, i) => {
         const item = el("figure", "item"); item.tabIndex = 0; item.setAttribute("role", "button");
@@ -459,7 +461,7 @@
     for (const e of document.querySelectorAll(".tab")) { const on = e.dataset.tab === tab; e.classList.toggle("active", on); e.setAttribute("aria-selected", on ? "true" : "false"); }
   }
   function showView(name) { $("view-vote").hidden = name !== "vote"; $("view-mine").hidden = name !== "mine"; }
-  function showEmpty() { $("view-vote").hidden = true; $("votebar").hidden = true; hide("loading"); $("empty").hidden = false; }
+  function showEmpty() { $("view-vote").hidden = true; $("votebar").hidden = true; $("toolbar").hidden = false; hide("loading"); $("empty").hidden = false; }
 
   // ── ui helpers ───────────────────────────────────────────────────────────────────────────────────
   const hide = (id) => { $(id).hidden = true; };
@@ -541,7 +543,7 @@
 
   // ── help / name / annotator code dialog ──────────────────────────────────────────────────────────
   const dlg = $("dlg-help");
-  function openHelp() { $("inp-name").value = userName; $("my-code").textContent = userId; $("inp-code").value = ""; dlg.showModal(); }
+  function openHelp() { $("inp-name").value = userName; $("my-code").textContent = userId; $("inp-code").value = ""; dlg.showModal(); dlg.scrollTop = 0; }
   dlg.addEventListener("close", () => {
     const newName = $("inp-name").value.trim().slice(0, 40);
     const renamed = newName !== userName;
@@ -599,6 +601,7 @@
   $("lightbox-close").addEventListener("click", (ev) => { ev.stopPropagation(); $("lightbox").hidden = true; });
   $("chk-skip-voted").addEventListener("change", (ev) => {
     if (busy) { ev.target.checked = skipVoted; return; }
+    ev.target.blur();
     skipVoted = ev.target.checked; store.set("fs_skip_voted", skipVoted ? "1" : "0");
     toast(skipVoted ? "Showing only queries without votes." : "Showing every query in order, including voted ones.");
     if (isSplit(tab) && !review) restart(tab);
@@ -613,19 +616,29 @@
     jumpTo(tab, clamped - 1);
   });
   document.addEventListener("keydown", (ev) => {
-    if (dlg.open || dlgNote.open || dlgPass.open || ["INPUT", "TEXTAREA"].includes(ev.target.tagName)) return;
+    if (ev.repeat || dlg.open || dlgNote.open || dlgPass.open || ["INPUT", "TEXTAREA"].includes(ev.target.tagName)) return;
     if (ev.key === "Escape") { $("lightbox").hidden = true; return; }
     if (!$("lightbox").hidden || !isSplit(tab)) return;
     const k = ev.key.toLowerCase();
     if (k === "1" || k === "f") onLabel("findable");
     else if (k === "2" || k === "j") onLabel("not_findable");
     else if (k === "s") skip();
-    else if (k === "n") openNote();
+    else if (k === "n") { ev.preventDefault(); openNote(); }
     else if (ev.key === "ArrowLeft") $("btn-back").click();
     else if (ev.key === "ArrowRight" && review) $("btn-fwd").click();
   });
 
+  const galCols = () => { const n = parseInt(store.get("fs_gal_cols"), 10); return n >= 1 && n <= 5 ? n : innerWidth > 1000 ? 4 : innerWidth > 600 ? 3 : 2; };
+  function setCols(n, save) {
+    $("g-grid").style.gridTemplateColumns = `repeat(${n}, minmax(0, 1fr))`;
+    $("inp-cols").value = n; $("out-cols").textContent = n;
+    if (save) store.set("fs_gal_cols", String(n));
+  }
+  $("inp-cols").addEventListener("input", (ev) => setCols(+ev.target.value, true));
+  $("inp-cols").addEventListener("pointerup", (ev) => ev.target.blur());
+
   // ── go ───────────────────────────────────────────────────────────────────────────────────────────
+  setCols(galCols(), false);
   renderName(); renderTabs(); renderCounts(); refreshButtons();
   if (!C || !C.SUPABASE_URL || C.SUPABASE_URL.includes("YOUR-PROJECT")) {
     showError(new Error("config.js is not filled in yet (SUPABASE_URL / SUPABASE_ANON_KEY / DATA_BASE_URL)."));

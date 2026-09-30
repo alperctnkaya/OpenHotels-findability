@@ -71,7 +71,9 @@
       </dl>
     </section>
     <section class="gallery" aria-label="Photos of this hotel">
-      <h2>Photos of this hotel <span class="num" id="g-count"></span><span class="sub">sorted by cosine similarity to the query</span></h2>
+      <h2>Photos of this hotel <span class="num" id="g-count"></span>
+        <label class="colsctl" for="inp-cols">Per row<input id="inp-cols" type="range" min="1" max="5" step="1" value="4"><output id="out-cols" class="tnum" for="inp-cols">4</output></label>
+        <span class="sub">sorted by cosine similarity to the query</span></h2>
       <div class="grid" id="g-grid"></div>
     </section>
   </div>
@@ -127,8 +129,8 @@
   </div>
   <div class="side end">
     <button class="ghost" id="btn-skip" title="Never show me this query again"><svg><use href="#i-skip"/></svg>Skip<kbd>S</kbd></button>
-    <button class="ghost" id="btn-note" hidden title="This query has its three votes: send a remark to the admin instead"><svg><use href="#i-note"/></svg>Note to admin<kbd>N</kbd></button>
-    <button class="ghost strong" id="btn-exit" hidden><svg><use href="#i-back"/></svg>Back to voting</button>
+    <button class="ghost" id="btn-note" hidden title="This query has its three votes: send a remark to the admin instead"><svg><use href="#i-note"/></svg>Note<span class="long"> to admin</span><kbd>N</kbd></button>
+    <button class="ghost strong" id="btn-exit" hidden><svg><use href="#i-back"/></svg>Back<span class="long"> to voting</span></button>
   </div>
 </footer>
 
