@@ -1,5 +1,5 @@
 // OpenHotels findability — voting page.  Plain browser JS, no build step, no dependencies.
-// Talks to Supabase through six RPC functions (supabase/schema.sql in the study repo) and fetches the per-hotel JSON
+// Talks to Supabase through seven RPC functions (supabase/schema.sql in the study repo) and fetches the per-hotel JSON
 // + WebP thumbnails produced by build_study.py from DATA_BASE_URL.  A "cell" is {src, w, h}: thumbnail path and size.
 (() => {
   const C = window.STUDY_CONFIG;
@@ -13,21 +13,25 @@
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const PAGE = 60;                                   // items per page in "My votes"
   const MAX_VOTES = 3;
+  const EAGER_IMAGES = 24;
+  const PRELOAD_IMAGES = 12;
+  const WARM_LIMIT = 200;
   const labelText = (l) => (l === "findable" ? "Findable" : "Not findable");
   const fmt = (n) => Number(n || 0).toLocaleString();
   const imageId = (src) => String(src || "").replace(/^thumbs[/]/, "").replace(/\.(webp|jpg|jpeg|png)$/i, "");
 
   // ── identity: a random code kept in this browser ─────────────────────────────────────────────────
+  const PREFIX = "fsu_";
   const store = {
-    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
-    set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode etc. */ } },
+    get(k) { try { return localStorage.getItem(PREFIX + k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(PREFIX + k, v); } catch { /* private mode etc. */ } },
   };
   const uuid = () => (crypto.randomUUID ? crypto.randomUUID()
     : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => { const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 3 | 8)).toString(16); }));
-  let userId = store.get("fs_user_id");
-  if (!userId || !UUID_RE.test(userId)) { userId = uuid(); store.set("fs_user_id", userId); }
-  let userName = store.get("fs_user_name") || "";
-  let passcode = store.get("fs_pass") || "";          // shared passcode, typed once, checked by every server function
+  let userId = store.get("user_id");
+  if (!userId || !UUID_RE.test(userId)) { userId = uuid(); store.set("user_id", userId); }
+  let userName = store.get("user_name") || "";
+  let passcode = store.get("pass") || "";             // shared passcode, typed once, checked by every server function
 
   // ── server ───────────────────────────────────────────────────────────────────────────────────────
   class PassError extends Error {}
@@ -46,7 +50,7 @@
     if (!r.ok) throw new Error(`Voting server error ${r.status} on ${fn}: ${(await r.text().catch(() => "")).slice(0, 200)}`);
     const out = await r.json();
     if (out && (out.error === "bad_pass" || out.status === "bad_pass")) {
-      passcode = ""; store.set("fs_pass", "");
+      passcode = ""; store.set("pass", "");
       throw new PassError("The passcode was not accepted. Please enter it again.");
     }
     return out;
@@ -66,9 +70,13 @@
     }
     return hotelCache.get(hid);
   }
-  const preloaded = new Set();
+  const warm = new Map();
   function preload(paths) {
-    for (const p of paths) if (!preloaded.has(p)) { preloaded.add(p); const im = new Image(); im.src = dataUrl(p); }
+    for (const p of paths) {
+      const im = warm.get(p) || Object.assign(new Image(), { src: dataUrl(p) });
+      warm.delete(p); warm.set(p, im);
+    }
+    for (const p of warm.keys()) { if (warm.size <= WARM_LIMIT) break; warm.delete(p); }
   }
 
   // ── small dom helpers ────────────────────────────────────────────────────────────────────────────
@@ -79,18 +87,19 @@
     u.setAttribute("href", `#${id}`); s.append(u); s.setAttribute("aria-hidden", "true");
     return s;
   }
-  function cellEl(cell) {
+  function cellEl(cell, lazy) {
     const box = el("div", "cell");
     box.style.aspectRatio = `${cell.w} / ${cell.h}`;
     const im = el("img");
+    if (lazy) im.loading = "lazy";
     im.src = dataUrl(cell.src); im.width = cell.w; im.height = cell.h; im.alt = ""; im.decoding = "async"; im.draggable = false;
     box.append(im);
     return box;
   }
-  function framedCell(cell, frameAr) {                // letterbox a cell into a fixed-ratio frame
+  function framedCell(cell, frameAr, lazy) {          // letterbox a cell into a fixed-ratio frame
     const frame = el("div", "frame");
     frame.style.aspectRatio = `${frameAr}`;
-    const box = cellEl(cell);
+    const box = cellEl(cell, lazy);
     const ar = cell.w / cell.h;
     box.style.width = ar >= frameAr ? "100%" : `${(100 * ar / frameAr).toFixed(3)}%`;
     frame.append(box);
@@ -98,28 +107,35 @@
   }
   function hotelLine(hotel) {
     const h = (hotel && hotel.hotel) || {};
-    const place = [h.city, h.country].filter(Boolean).join(", ");
-    return { title: h.name || "name unknown", place };
+    const clean = (s) => String(s || "").replace(/\s+/g, " ").trim();
+    const place = [h.city, h.country].map(clean).filter(Boolean).join(", ");
+    return { title: clean(h.name) || "name unknown", place };
+  }
+  function galleryOrder(hotel, qid) {
+    const info = hotel.queries[qid];
+    const order = hotel.gallery.map((_, i) => i);
+    if (info && info.sims) order.sort((a, b) => info.sims[b] - info.sims[a]);
+    return order;
   }
 
   // ── state ────────────────────────────────────────────────────────────────────────────────────────
-  let tab = store.get("fs_tab");
+  let tab = store.get("tab");
   if (!isSplit(tab) && tab !== "mine") tab = "test_non_object";
   const live = { test_non_object: { cur: null, next: null }, test_object: { cur: null, next: null } };
   const pos = {};                                     // split -> queue position to continue from
-  for (const s of Object.keys(SPLITS)) pos[s] = Math.max(0, parseInt(store.get(`fs_pos_${s}`) || "0", 10) || 0);
-  let skipVoted = store.get("fs_skip_voted") === "1";
+  for (const s of Object.keys(SPLITS)) pos[s] = Math.max(0, parseInt(store.get(`pos_${s}`) || "0", 10) || 0);
+  let skipVoted = store.get("skip_voted") === "1";
   let review = null;                                  // { split, offset, total, vote, q }
   const FILTERS = ["all", "findable", "not_findable", "disagree"];
-  const mine = { split: isSplit(store.get("fs_mine_split")) ? store.get("fs_mine_split") : "test_non_object", page: 0,
-                 filter: FILTERS.includes(store.get("fs_mine_filter")) ? store.get("fs_mine_filter") : "all" };
+  const mine = { split: isSplit(store.get("mine_split")) ? store.get("mine_split") : "test_non_object", page: 0,
+                 filter: FILTERS.includes(store.get("mine_filter")) ? store.get("mine_filter") : "all" };
   let progress = {};                                  // split -> {queries, voted, votes}
   let myCounts = {};                                  // split -> my number of votes
   let busy = false;
   let shownAt = 0;
 
   // ── queue ────────────────────────────────────────────────────────────────────────────────────────
-  async function pull(split, fromRank, exclude) {
+  async function pull(split, fromRank, exclude, ahead) {
     const res = await rpc("next_query", { p_user: userId, p_split: split, p_from_rank: fromRank, p_skip_voted: skipVoted, p_exclude: exclude || null });
     if (res.error) throw new Error(`next_query: ${res.error}`);
     progress[split] = res.progress;
@@ -127,7 +143,7 @@
     renderCounts();
     if (!res.qid) return null;
     const hotel = await fetchHotel(res.hotel_id);
-    preload([res.cell.src, ...hotel.gallery.map((g) => g.src)]);
+    if (ahead) preload([res.cell.src, ...galleryOrder(hotel, res.qid).slice(0, PRELOAD_IMAGES).map((i) => hotel.gallery[i].src)]);
     return { qid: res.qid, hotel_id: res.hotel_id, idx: res.idx, kind: res.kind, rank: res.queue_rank, full: !!res.full,
              votes: res.votes || { n: 0, up: 0, down: 0, voters: [] }, wrapped: !!res.wrapped, cell: res.cell, hotel,
              myVote: res.my_vote || null, skipped: !!res.skipped };
@@ -144,12 +160,11 @@
       progress[split] = res.progress; if (res.mine) myCounts = { ...myCounts, ...res.mine };
       if (!res.qid) { toast(`There is no position ${fmt(rank + 1)}.`); advance(split); return; }
       const hotel = await fetchHotel(res.hotel_id);
-      preload([res.cell.src, ...hotel.gallery.map((g) => g.src)]);
       const tally = res.votes || { n: 0, up: 0, down: 0, voters: [] };
       const q = { qid: res.qid, hotel_id: res.hotel_id, idx: res.idx, kind: res.kind, rank: res.queue_rank, full: !!res.full,
                   votes: tally, wrapped: false, cell: res.cell, hotel };
-      pos[split] = q.rank + 1; store.set(`fs_pos_${split}`, String(q.rank));
-      L.next = pull(split, q.rank + 1, q.qid); L.next.catch(() => {});
+      pos[split] = q.rank + 1; store.set(`pos_${split}`, String(q.rank));
+      L.next = pull(split, q.rank + 1, q.qid, true); L.next.catch(() => {});
       if (res.my_vote) {                                   // already answered: open it as a review of that answer
         review = { split, offset: null, total: myCounts[split] || 0, vote: { qid: q.qid, ...res.my_vote }, q };
         if (tab === split) renderQuery(q, { ...res.my_vote, split, offset: null, total: review.total });
@@ -177,8 +192,8 @@
       if (!q) q = await pull(split, pos[split], null);
       L.cur = q;
       if (q) {
-        pos[split] = q.rank; store.set(`fs_pos_${split}`, String(q.rank));
-        L.next = pull(split, q.rank + 1, q.qid);        // prefetch the following one
+        pos[split] = q.rank; store.set(`pos_${split}`, String(q.rank));
+        L.next = pull(split, q.rank + 1, q.qid, true);  // prefetch the following one
         L.next.catch(() => {});
       }
       if (tab === split && !review) {
@@ -243,18 +258,18 @@
 
     const gal = q.hotel.gallery;
     const sims = info ? info.sims : null;
-    const order = gal.map((_, i) => i);
-    if (sims) order.sort((a, b) => sims[b] - sims[a]);                     // most similar first
+    const order = galleryOrder(q.hotel, q.qid);                            // most similar first
     $("g-count").textContent = fmt(gal.length);
     const grid = $("g-grid"); grid.replaceChildren();
-    for (const i of order) {
+    for (const [n, i] of order.entries()) {
       const g = gal[i];
       const card = el("figure", "card");
-      const fr = framedCell(g, 4 / 3);
+      const fr = framedCell(g, 4 / 3, n >= EAGER_IMAGES);
       fr.title = `${imageId(g.src)}${g.room ? ` · room ${g.room}` : ""}`;
       fr.addEventListener("click", () => lightbox(g));
       const cap = el("figcaption");
-      cap.append(el("span", "view-type", g.view || "unlabelled"));
+      const view = el("span", "view-type", g.view || "unlabelled"); view.title = view.textContent;
+      cap.append(view);
       const sim = el("span", "sim"); sim.append("sim ", el("b", null, sims ? Number(sims[i]).toFixed(3) : "–"));
       cap.append(sim, el("span", "date tnum", [g.room ? `room ${g.room}` : null, g.date ? `taken ${g.date}` : "date unknown"].filter(Boolean).join(" · ")));
       card.append(fr, cap); grid.append(card);
@@ -392,7 +407,7 @@
       const q = { qid: v.qid, hotel_id: v.hotel_id, idx: v.idx, kind: v.kind, rank: v.queue_rank, full: tally.n >= MAX_VOTES,
                   votes: tally, cell: v.cell, hotel };
       review = { split, offset, total: res.total, vote: v, q, filter };
-      tab = split; store.set("fs_tab", tab); renderTabs();
+      tab = split; store.set("tab", tab); renderTabs();
       renderQuery(q, { ...v, split, offset, total: res.total, filter });
     } catch (e) {
       showError(e);
@@ -450,7 +465,7 @@
 
   // ── tabs / views ─────────────────────────────────────────────────────────────────────────────────
   function showTab(t) {
-    tab = t; store.set("fs_tab", t); renderTabs(); review = null;
+    tab = t; store.set("tab", t); renderTabs(); review = null;
     if (t === "mine") { renderMine(); return; }
     const L = live[t];
     if (L.cur) renderQuery(L.cur, null); else advance(t);
@@ -530,9 +545,9 @@
   dlgPass.addEventListener("close", () => {
     const v = $("inp-pass").value.trim();
     if (!v) { openPass("The passcode is required to vote."); return; }
-    passcode = v; store.set("fs_pass", v);
+    passcode = v; store.set("pass", v);
     hide("error");
-    if (!store.get("fs_seen_help")) openHelp();
+    if (!store.get("seen_help")) openHelp();
     if (tab === "mine") renderMine();
     else if (review) { const r = review; review = null; if (r.offset == null) jumpTo(r.split, r.q.rank); else openReview(r.split, r.offset, r.filter); }
     else { for (const s of Object.keys(SPLITS)) live[s] = { cur: null, next: null }; advance(tab); }
@@ -546,7 +561,7 @@
     const newName = $("inp-name").value.trim().slice(0, 40);
     const renamed = newName !== userName;
     userName = newName;
-    store.set("fs_user_name", userName); store.set("fs_seen_help", "1"); renderName();
+    store.set("user_name", userName); store.set("seen_help", "1"); renderName();
     if (renamed && passcode) {                            // earlier anonymous (or differently named) votes get the new name too
       rpc("set_name", { p_user: userId, p_name: userName || null })
         .then((r) => { if (r.status === "ok" && r.votes) toast(`Name applied to your ${fmt(r.votes)} earlier vote${r.votes === 1 ? "" : "s"}.`); })
@@ -554,7 +569,7 @@
     }
     const code = $("inp-code").value.trim().toLowerCase();
     if (code && UUID_RE.test(code) && code !== userId) {
-      userId = code; store.set("fs_user_id", code);
+      userId = code; store.set("user_id", code);
       toast("Continuing with the pasted annotator code.");
       for (const s of Object.keys(SPLITS)) live[s] = { cur: null, next: null };
       review = null; myCounts = {}; progress = {}; mine.page = 0; renderCounts();
@@ -572,10 +587,10 @@
   // ── wiring ───────────────────────────────────────────────────────────────────────────────────────
   for (const e of document.querySelectorAll(".tab")) e.addEventListener("click", () => { if (!busy) showTab(e.dataset.tab); });
   for (const b of $("mine-seg").querySelectorAll("button")) b.addEventListener("click", () => {
-    mine.split = b.dataset.split; mine.page = 0; store.set("fs_mine_split", mine.split); renderMine();
+    mine.split = b.dataset.split; mine.page = 0; store.set("mine_split", mine.split); renderMine();
   });
   for (const b of $("mine-filter").querySelectorAll("button")) b.addEventListener("click", () => {
-    mine.filter = b.dataset.filter; mine.page = 0; store.set("fs_mine_filter", mine.filter); renderMine();
+    mine.filter = b.dataset.filter; mine.page = 0; store.set("mine_filter", mine.filter); renderMine();
   });
   $("mine-newer").addEventListener("click", () => { if (mine.page > 0) { mine.page -= 1; renderMine(); } });
   $("mine-older").addEventListener("click", () => { mine.page += 1; renderMine(); });
@@ -599,7 +614,7 @@
   $("lightbox-close").addEventListener("click", (ev) => { ev.stopPropagation(); $("lightbox").hidden = true; });
   $("chk-skip-voted").addEventListener("change", (ev) => {
     if (busy) { ev.target.checked = skipVoted; return; }
-    skipVoted = ev.target.checked; store.set("fs_skip_voted", skipVoted ? "1" : "0");
+    skipVoted = ev.target.checked; store.set("skip_voted", skipVoted ? "1" : "0");
     toast(skipVoted ? "Showing only queries without votes." : "Showing every query in order, including voted ones.");
     if (isSplit(tab) && !review) restart(tab);
   });
@@ -632,6 +647,6 @@
     return;
   }
   if (!passcode) { openPass("Enter the passcode you were given for this study."); return; }
-  if (!store.get("fs_seen_help")) openHelp();
+  if (!store.get("seen_help")) openHelp();
   showTab(tab);
 })();
