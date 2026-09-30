@@ -21,7 +21,7 @@
   const imageId = (src) => String(src || "").replace(/^thumbs[/]/, "").replace(/\.(webp|jpg|jpeg|png)$/i, "");
 
   // ── identity: a random code kept in this browser ─────────────────────────────────────────────────
-  const PREFIX = "fsu_";
+  const PREFIX = (C && C.STORAGE_PREFIX) || "fs_";    // set per site in config.js: every site on this domain shares one localStorage
   const store = {
     get(k) { try { return localStorage.getItem(PREFIX + k); } catch { return null; } },
     set(k, v) { try { localStorage.setItem(PREFIX + k, v); } catch { /* private mode etc. */ } },
@@ -658,7 +658,18 @@
     else if (ev.key === "ArrowRight" && review) $("btn-fwd").click();
   });
 
+  // gallery columns per row: the saved choice, else a default from the window width
+  const galCols = () => { const n = parseInt(store.get("gal_cols"), 10); return n >= 1 && n <= 5 ? n : innerWidth > 1000 ? 4 : innerWidth > 600 ? 3 : 2; };
+  function setCols(n, save) {
+    $("g-grid").style.gridTemplateColumns = `repeat(${n}, minmax(0, 1fr))`;
+    $("inp-cols").value = n; $("out-cols").textContent = n;
+    if (save) store.set("gal_cols", String(n));
+  }
+  $("inp-cols").addEventListener("input", (ev) => setCols(+ev.target.value, true));
+  $("inp-cols").addEventListener("pointerup", (ev) => ev.target.blur());
+
   // ── go ───────────────────────────────────────────────────────────────────────────────────────────
+  setCols(galCols(), false);
   renderName(); renderTabs(); renderCounts(); refreshButtons();
   if (!configured()) {
     showError(new Error(CONFIG_MSG));

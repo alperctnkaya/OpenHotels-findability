@@ -3,198 +3,58 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OpenHotels-Updated findability</title>
-<meta name="description" content="Can this hotel be recognised from the photos we have of it? A human findability study for the updated release of the OpenHotels benchmark.">
+<title>OpenHotels findability: choose a dataset</title>
+<meta name="description" content="Can this hotel be recognised from the photos we have of it? A human findability study for the OpenHotels benchmark. Choose the dataset you were asked to annotate.">
 <meta name="color-scheme" content="light dark">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="shared/style.css">
+<style>
+  .choose { max-width: 760px; margin: 0 auto; padding: 48px 20px 64px; }
+  .choose h1 { margin-bottom: 8px; }
+  .choose p { color: var(--ink-2); margin-bottom: 28px; }
+  .choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .choice {
+    display: flex; flex-direction: column; gap: 4px; padding: 20px; color: var(--ink); text-decoration: none;
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+    transition: border-color .15s ease-out;
+  }
+  .choice:hover { border-color: var(--accent); }
+  .choice .name { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+  .choice .what { color: var(--ink-2); }
+  .choice .go { display: inline-flex; align-items: center; gap: 4px; margin-top: 16px; color: var(--accent); font-weight: 500; }
+  @media (max-width: 600px) {
+    .choose { padding: 28px 16px 48px; }
+    .choices { grid-template-columns: 1fr; }
+  }
+</style>
 </head>
 <body>
 
 <svg class="sprite" aria-hidden="true" focusable="false">
-  <symbol id="i-up" viewBox="0 0 24 24"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></symbol>
-  <symbol id="i-down" viewBox="0 0 24 24"><path d="M17 14V2"/><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"/></symbol>
-  <symbol id="i-skip" viewBox="0 0 24 24"><path d="M5 5l8 7-8 7"/><path d="M15 5v14"/></symbol>
-  <symbol id="i-note" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4Z"/><path d="M8 9h8M8 12h5"/></symbol>
-  <symbol id="i-prev" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
   <symbol id="i-next" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
-  <symbol id="i-back" viewBox="0 0 24 24"><path d="M9 14l-4-4 4-4"/><path d="M5 10h9a5 5 0 0 1 0 10h-3"/></symbol>
-  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 5 0c0 1.7-2.5 2-2.5 4"/><path d="M12 17h.01"/></symbol>
-  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
-  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
 </svg>
 
 <header class="bar">
   <div class="bar-row">
-    <a class="wordmark" href="./">OpenHotels<span class="upd">-Updated</span> <span class="tag">findability</span></a>
-    <nav class="tabs" role="tablist" aria-label="Sections">
-      <button class="tab" role="tab" data-tab="test_non_object">Room photos<span class="num" id="cnt-test_non_object" title="your votes"></span></button>
-      <button class="tab" role="tab" data-tab="test_object">Object crops<span class="num" id="cnt-test_object" title="your votes"></span></button>
-      <button class="tab" role="tab" data-tab="mine">My votes<span class="num" id="cnt-mine" title="your votes"></span></button>
-    </nav>
-    <div class="me">
-      <button class="ghost" id="btn-name" title="Your name and annotator code"><svg><use href="#i-user"/></svg><span id="name-label">Set your name</span></button>
-      <button class="ghost" id="btn-help"><svg><use href="#i-help"/></svg>How to vote</button>
-    </div>
-  </div>
-  <div class="bar-row toolbar" id="toolbar" hidden>
-    <div class="pos">
-      <span id="status-pos" class="tnum">Position –</span>
-      <form id="jump-form" class="jump">
-        <label for="inp-pos">Go to</label>
-        <input id="inp-pos" type="number" min="1" step="1" inputmode="numeric" placeholder="1">
-        <button type="submit" class="ghost">Go</button>
-      </form>
-    </div>
-    <label class="switch" for="chk-skip-voted">
-      <input type="checkbox" role="switch" id="chk-skip-voted">
-      <span class="track" aria-hidden="true"><span class="knob"></span></span>
-      <span class="switch-text">Skip queries that already have votes</span>
-    </label>
-    <div class="progress tnum" id="status-progress"></div>
+    <a class="wordmark" href="./">OpenHotels <span class="tag">findability</span></a>
   </div>
 </header>
 
-<main id="view-vote" class="view" hidden>
-  <div class="notice review" id="review-banner" hidden></div>
-  <div class="notice tally" id="tally" hidden></div>
-  <h1 class="question">Could a careful person tell that this <span id="q-kind">photo</span> was taken in this hotel, using the hotel's photos?</h1>
-  <div class="cols">
-    <section class="query" aria-label="Query image">
-      <div id="q-cell"></div>
-      <dl class="meta">
-        <div><dt>Hotel</dt><dd id="m-hotel"></dd></div>
-        <div><dt>Image</dt><dd id="m-image" class="tnum"></dd></div>
-        <div><dt>Query</dt><dd id="m-qid" class="tnum"></dd></div>
-        <div><dt>Taken</dt><dd id="m-date" class="tnum"></dd></div>
-        <div id="m-room-row" hidden><dt>Room</dt><dd id="m-room" class="tnum"></dd></div>
-        <div id="m-debug-row" hidden><dt>Model</dt><dd id="m-debug" class="tnum"></dd></div>
-      </dl>
-    </section>
-    <section class="gallery" aria-label="Photos of this hotel">
-      <h2>Photos of this hotel <span class="num" id="g-count"></span><span class="sub">sorted by cosine similarity to the query</span></h2>
-      <div class="grid" id="g-grid"></div>
-    </section>
-  </div>
+<main class="choose">
+  <h1>Which dataset are you annotating?</h1>
+  <p>Can this hotel be recognised from the photos we have of it? This is a human findability study for the OpenHotels benchmark. Pick the dataset you were asked to work on.</p>
+  <nav class="choices" aria-label="Datasets">
+    <a class="choice" href="OpenHotels/">
+      <span class="name">OpenHotels</span>
+      <span class="what">The original dataset</span>
+      <span class="go">Open study<svg><use href="#i-next"/></svg></span>
+    </a>
+    <a class="choice" href="OpenHotels-updated/">
+      <span class="name">OpenHotels-Updated</span>
+      <span class="what">The updated release</span>
+      <span class="go">Open study<svg><use href="#i-next"/></svg></span>
+    </a>
+  </nav>
 </main>
 
-<main id="view-mine" class="view" hidden>
-  <div class="mine-head">
-    <h1 id="mine-title">Your votes</h1>
-    <div class="seg" id="mine-seg" role="group" aria-label="Category">
-      <button data-split="test_non_object">Room photos<span class="num" id="mcnt-test_non_object"></span></button>
-      <button data-split="test_object">Object crops<span class="num" id="mcnt-test_object"></span></button>
-    </div>
-  </div>
-  <div class="mine-filters">
-    <div class="seg" id="mine-filter" role="group" aria-label="Filter">
-      <button data-filter="all">All</button>
-      <button data-filter="findable">Findable</button>
-      <button data-filter="not_findable">Not findable</button>
-      <button data-filter="disagree" title="someone else voted the opposite of you">Disagreements</button>
-    </div>
-  </div>
-  <p class="sub">Newest first. <b>#</b> is the query's position: type it into <i>Go to</i> on a voting tab to return there. Open one to see the hotel's photos and everybody's votes, and to change your answer.</p>
-  <div class="grid mine-grid" id="mine-grid"></div>
-  <div class="pager">
-    <button class="ghost" id="mine-newer"><svg><use href="#i-prev"/></svg>Newer</button>
-    <span id="mine-page" class="sub tnum"></span>
-    <button class="ghost" id="mine-older">Older<svg><use href="#i-next"/></svg></button>
-  </div>
-</main>
-
-<section id="empty" class="state" hidden>
-  <h2>Nothing left to show in this tab</h2>
-  <p>You have voted on or skipped every remaining query here, or every query without votes if that filter is on.
-     Switch the filter off, try the other tab, or review your answers under <b>My votes</b>.</p>
-</section>
-
-<section id="error" class="state problem" hidden>
-  <h2>Something went wrong</h2>
-  <p id="error-msg"></p>
-  <button class="ghost strong" id="btn-retry">Try again</button>
-</section>
-
-<section id="loading" class="state" aria-live="polite"><p>Loading…</p></section>
-
-<footer class="verdict" id="votebar" hidden>
-  <div class="side">
-    <button class="ghost" id="btn-back" title="Your previous answer (←)"><svg><use href="#i-prev"/></svg><span id="btn-back-label">Previous</span></button>
-    <button class="ghost" id="btn-fwd" hidden title="Your next answer (→)">Newer<svg><use href="#i-next"/></svg></button>
-  </div>
-  <div class="middle">
-    <button class="verdict-btn yes" id="btn-yes"><svg><use href="#i-up"/></svg>Findable<kbd>1</kbd></button>
-    <button class="verdict-btn no" id="btn-no"><svg><use href="#i-down"/></svg>Not findable<kbd>2</kbd></button>
-  </div>
-  <div class="side end">
-    <button class="ghost" id="btn-skip" title="Never show me this query again"><svg><use href="#i-skip"/></svg>Skip<kbd>S</kbd></button>
-    <button class="ghost" id="btn-note" hidden title="This query has its three votes: send a remark to the admin instead"><svg><use href="#i-note"/></svg>Note<span class="long"> to admin</span><kbd>N</kbd></button>
-    <button class="ghost strong" id="btn-exit" hidden><svg><use href="#i-back"/></svg>Back<span class="long"> to voting</span></button>
-  </div>
-</footer>
-
-<div id="toast" class="toast" role="status" hidden></div>
-
-<dialog id="dlg-pass">
-  <h2>Study passcode</h2>
-  <p>This page is public, but voting needs the passcode the organiser gave you. It is remembered in this browser.</p>
-  <p class="sub" id="pass-msg"></p>
-  <form method="dialog" class="form-row">
-    <label>Passcode<input id="inp-pass" autocomplete="off" spellcheck="false" required></label>
-    <button class="primary" type="submit">Continue</button>
-  </form>
-</dialog>
-
-<dialog id="dlg-help">
-  <h2>How to vote</h2>
-  <p>You will see a <b>query image</b>, a photo of a hotel room or a crop showing one object in it, next to
-     <b>all the photos we have of that hotel</b>. Decide whether the hotel could be identified from the query using
-     those photos.</p>
-  <ul class="rubric">
-    <li><span class="tag yes"><svg><use href="#i-up"/></svg>Findable</span>At least one hotel photo shows the same room or the same distinctive things: furniture, artwork, fixtures, layout, materials. A careful person could match them.</li>
-    <li><span class="tag no"><svg><use href="#i-down"/></svg>Not findable</span>Nothing in the hotel photos could be matched to the query: different rooms, only generic items, or the details needed are not visible.</li>
-    <li><span class="tag"><svg><use href="#i-skip"/></svg>Skip</span>Broken image or you really cannot decide. Skips do not count and the query is never shown to you again.</li>
-  </ul>
-  <p>Queries come in a fixed order, hardest for the model first; the goal is <b>one vote per query</b>. Votes that others
-     already cast are shown above the images, and you can add yours as long as a query has fewer than three. Use the
-     <b>skip queries that already have votes</b> switch to see only untouched ones, or <b>Go to</b> a position to
-     continue from there. You are never shown a query you already answered. When a query has its three votes you cannot
-     vote, but <b>Note to admin</b> appears so you can say, for example, that you disagree.</p>
-  <p>There is no right answer; go with your judgement in about ten seconds. Under the gallery photos the number is the
-     model's cosine similarity to the query. <b>My votes</b> lists everything you answered; <b>Previous</b> reopens your
-     last answer, and any answer can be changed. Keys: <kbd>1</kbd> findable, <kbd>2</kbd> not findable, <kbd>S</kbd> skip,
-     <kbd>N</kbd> note, <kbd>←</kbd> previous, <kbd>Esc</kbd> closes an enlarged image.</p>
-  <form method="dialog" class="form-row">
-    <label>Your name or initials <span class="sub">optional, shown next to your votes</span>
-      <input id="inp-name" maxlength="40" autocomplete="off" placeholder="e.g. AC">
-    </label>
-    <button class="primary" id="btn-start" value="ok">Start voting</button>
-  </form>
-  <details class="code">
-    <summary>Continue on another device</summary>
-    <p>Your annotator code: <code id="my-code"></code> <button type="button" class="ghost" id="btn-copy">Copy</button></p>
-    <label>Paste a code from another browser to continue there instead
-      <input id="inp-code" autocomplete="off" spellcheck="false" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
-    </label>
-    <p class="sub">Applied when you close this dialog. Votes from both devices are then counted together.</p>
-  </details>
-</dialog>
-
-<dialog id="dlg-note">
-  <h2>Note to the admin</h2>
-  <p class="sub" id="note-ctx"></p>
-  <form method="dialog">
-    <textarea id="inp-note" rows="5" maxlength="2000"
-      placeholder="e.g. voted 2 findable / 1 not findable, but I am certain it is not findable: the only shared item is a generic lamp"></textarea>
-    <div class="form-row end">
-      <button class="ghost" type="submit" value="cancel">Cancel</button>
-      <button class="primary" type="submit" value="send">Send note</button>
-    </div>
-  </form>
-</dialog>
-
-<div id="lightbox" hidden><div id="lightbox-cell"></div><button class="ghost close" id="lightbox-close" aria-label="Close"><svg><use href="#i-close"/></svg></button></div>
-
-<script src="config.js"></script>
-<script src="app.js"></script>
 </body>
 </html>

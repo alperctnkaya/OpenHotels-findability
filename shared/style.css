@@ -18,7 +18,7 @@
   --yes: #1a7a43; --yes-soft: #dff2e5; --yes-line: #8fcaa6; --on-yes: #fff; --on-no: #fff;
   --no: #b3362f;  --no-soft: #f9e4e2;  --no-line: #e3a29c;
   --warn: #7a5200; --warn-soft: #fbeecb; --warn-line: #e3c571;
-  --photo-bg: #101216;         /* letterbox behind photos */
+  --photo-bg: #8b919b;         /* letterbox behind photos: mid-gray, so bright photos keep a visible edge */
   --shadow: 0 1px 2px rgba(20, 24, 30, .06), 0 8px 24px -12px rgba(20, 24, 30, .18);
   --shadow-pop: 0 12px 40px -12px rgba(20, 24, 30, .35), 0 2px 6px rgba(20, 24, 30, .08);
   --radius: 10px;
@@ -154,7 +154,10 @@ svg:not(.sprite) { width: 18px; height: 18px; fill: none; stroke: currentColor; 
 .meta dd .sub { display: block; }
 
 .gallery h2 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-.gallery h2 .sub { margin-left: auto; }
+.gallery h2 .sub { margin-left: 12px; }
+.gallery h2 .colsctl { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; font-size: 13px; font-weight: 400; color: var(--ink-2); }
+.colsctl input { width: 112px; height: 24px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.colsctl output { min-width: 1ch; color: var(--ink); font-weight: 500; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px 14px; }
 .card { margin: 0; min-width: 0; }
 .card .frame { border-radius: var(--radius-sm); box-shadow: var(--shadow); }
@@ -197,7 +200,7 @@ svg:not(.sprite) { width: 18px; height: 18px; fill: none; stroke: currentColor; 
 .state.problem { padding: 20px; border: 1px solid var(--no-line); border-radius: var(--radius); background: var(--no-soft); color: var(--ink); }
 #error { position: fixed; z-index: 25; top: calc(var(--bar-h) + var(--toolbar-h) + 12px); left: 50%; transform: translateX(-50%); width: min(92vw, 520px); margin: 0; box-shadow: var(--shadow-pop); }
 .cell.failed img { visibility: hidden; }
-.cell.failed::after { content: "did not load"; position: absolute; inset: 0; display: grid; place-items: center; color: var(--ink-3); font-size: 12px; }
+.cell.failed::after { content: "did not load"; position: absolute; inset: 0; display: grid; place-items: center; color: var(--ink); font-size: 12px; }
 .toast { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); z-index: 30; max-width: min(92vw, 520px); padding: 10px 14px; border-radius: var(--radius-sm); background: var(--ink); color: var(--canvas); font-size: 13px; box-shadow: var(--shadow-pop); }
 
 /* ── verdict bar ──────────────────────────────────────────────────────────────────────────────── */
