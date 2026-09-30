@@ -13,7 +13,7 @@
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const PAGE = 60;                                   // items per page in "My votes"
   const MAX_VOTES = 3;
-  const EAGER_IMAGES = 24;
+  const EAGER_IMAGES = 12;
   const PRELOAD_IMAGES = 12;
   const WARM_LIMIT = 200;
   const labelText = (l) => (l === "findable" ? "Findable" : "Not findable");
@@ -35,7 +35,10 @@
 
   // ── server ───────────────────────────────────────────────────────────────────────────────────────
   class PassError extends Error {}
+  const CONFIG_MSG = "config.js is not filled in yet (SUPABASE_URL / SUPABASE_ANON_KEY / DATA_BASE_URL).";
+  const configured = () => !!C && !!C.SUPABASE_URL && !!C.SUPABASE_ANON_KEY && !/YOUR-/.test(C.SUPABASE_URL + C.SUPABASE_ANON_KEY);
   async function rpc(fn, args) {
+    if (!configured()) throw new Error(CONFIG_MSG);
     if (!passcode) throw new PassError("Please enter the study passcode.");
     let r;
     try {
@@ -71,6 +74,7 @@
     return hotelCache.get(hid);
   }
   const warm = new Map();
+  const imgFail = { until: 0 };
   function preload(paths) {
     for (const p of paths) {
       const im = warm.get(p) || Object.assign(new Image(), { src: dataUrl(p) });
@@ -87,12 +91,21 @@
     u.setAttribute("href", `#${id}`); s.append(u); s.setAttribute("aria-hidden", "true");
     return s;
   }
+  const lazyLoader = "IntersectionObserver" in window ? new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting) { e.target.src = e.target.dataset.src; lazyLoader.unobserve(e.target); }
+  }, { rootMargin: "1000px 0px" }) : null;
   function cellEl(cell, lazy) {
     const box = el("div", "cell");
     box.style.aspectRatio = `${cell.w} / ${cell.h}`;
     const im = el("img");
-    if (lazy) im.loading = "lazy";
-    im.src = dataUrl(cell.src); im.width = cell.w; im.height = cell.h; im.alt = ""; im.decoding = "async"; im.draggable = false;
+    im.width = cell.w; im.height = cell.h; im.alt = ""; im.decoding = "async"; im.draggable = false;
+    if (lazy && lazyLoader) { im.dataset.src = dataUrl(cell.src); lazyLoader.observe(im); } else im.src = dataUrl(cell.src);
+    let tries = 0;
+    im.addEventListener("error", () => {
+      imgFail.until = Date.now() + 60000;
+      if (tries >= 2) { box.classList.add("failed"); toast("Some photos did not load. The photo server may be busy: wait a minute, then reopen this query.", 9000); return; }
+      setTimeout(() => { const u = im.src; im.removeAttribute("src"); im.src = u; }, 20000 * 3 ** tries++ + Math.random() * 3000);
+    });
     box.append(im);
     return box;
   }
@@ -143,7 +156,7 @@
     renderCounts();
     if (!res.qid) return null;
     const hotel = await fetchHotel(res.hotel_id);
-    if (ahead) preload([res.cell.src, ...galleryOrder(hotel, res.qid).slice(0, PRELOAD_IMAGES).map((i) => hotel.gallery[i].src)]);
+    if (ahead && Date.now() > imgFail.until) preload([res.cell.src, ...galleryOrder(hotel, res.qid).slice(0, PRELOAD_IMAGES).map((i) => hotel.gallery[i].src)]);
     return { qid: res.qid, hotel_id: res.hotel_id, idx: res.idx, kind: res.kind, rank: res.queue_rank, full: !!res.full,
              votes: res.votes || { n: 0, up: 0, down: 0, voters: [] }, wrapped: !!res.wrapped, cell: res.cell, hotel,
              myVote: res.my_vote || null, skipped: !!res.skipped };
@@ -260,7 +273,7 @@
     const sims = info ? info.sims : null;
     const order = galleryOrder(q.hotel, q.qid);                            // most similar first
     $("g-count").textContent = fmt(gal.length);
-    const grid = $("g-grid"); grid.replaceChildren();
+    const grid = $("g-grid"); if (lazyLoader) lazyLoader.disconnect(); grid.replaceChildren();
     for (const [n, i] of order.entries()) {
       const g = gal[i];
       const card = el("figure", "card");
@@ -271,7 +284,9 @@
       const view = el("span", "view-type", g.view || "unlabelled"); view.title = view.textContent;
       cap.append(view);
       const sim = el("span", "sim"); sim.append("sim ", el("b", null, sims ? Number(sims[i]).toFixed(3) : "–"));
-      cap.append(sim, el("span", "date tnum", [g.room ? `room ${g.room}` : null, g.date ? `taken ${g.date}` : "date unknown"].filter(Boolean).join(" · ")));
+      const meta = el("span", "date tnum");
+      [g.room ? `room ${g.room}` : null, g.date ? `taken ${g.date}` : "date unknown"].filter(Boolean).forEach((t, k) => { if (k) meta.append(" · "); meta.append(el("span", null, t)); });
+      cap.append(sim, meta);
       card.append(fr, cap); grid.append(card);
     }
 
@@ -293,7 +308,7 @@
     $("btn-exit").hidden = !rev;
     $("btn-fwd").hidden = !(rev && rev.offset != null && rev.offset > 0);
     $("btn-back-label").textContent = rev ? "Older" : "Previous";
-    $("toolbar").hidden = false;
+    $("toolbar").hidden = !progress[tab];
 
     showView("vote"); $("votebar").hidden = false; hide("loading"); hide("empty"); hide("error");
     renderCounts(); refreshButtons();
@@ -431,24 +446,26 @@
       if (res.error) throw new Error(`my_votes: ${res.error}`);
       if (mine.filter === "all") myCounts[mine.split] = res.total;
       renderCounts();
-      const grid = $("mine-grid"); grid.replaceChildren();
+      const other = mine.split === "test_non_object" ? "test_object" : "test_non_object";
+      if (myCounts[other] == null) rpc("my_votes", { p_user: userId, p_split: other, p_limit: 1, p_offset: 0, p_filter: "all" }).then((r) => { myCounts[other] = r.total; renderCounts(); }).catch(() => {});
+      const grid = $("mine-grid"); if (lazyLoader) lazyLoader.disconnect(); grid.replaceChildren();
       res.votes.forEach((v, i) => {
         const item = el("figure", "item"); item.tabIndex = 0; item.setAttribute("role", "button");
-        const fr = framedCell(v.cell, 4 / 3);
+        const fr = framedCell(v.cell, 4 / 3, i >= 12);
         const badge = el("span", `badge ${v.label === "findable" ? "yes" : "no"}`);
         badge.title = labelText(v.label); badge.append(icon(v.label === "findable" ? "i-up" : "i-down"));
         fr.append(badge);
         const cap = el("figcaption");
         const tv = v.votes || {};
-        cap.append(el("b", "tnum", `#${fmt(v.queue_rank + 1)}`), el("span", "tnum", ` · hotel ${v.hotel_id} · ${imageId(v.cell.src)}`), document.createElement("br"),
-                   `${v.kind} · all: ${tv.up ?? "?"} findable, ${tv.down ?? "?"} not${v.updated_at ? " · changed" : ""}`);
+        const l1 = el("div", "tnum"); l1.append(el("b", null, `#${fmt(v.queue_rank + 1)}`), ` · hotel ${v.hotel_id}`);
+        const l3 = el("div", "tnum", imageId(v.cell.src)); l3.title = v.cell.src;
+        cap.append(l1, el("div", null, `${v.kind} · ${tv.up ?? "?"} findable, ${tv.down ?? "?"} not${v.updated_at ? " · changed" : ""}`), l3);
         item.append(fr, cap);
         const open = () => openReview(mine.split, mine.page * PAGE + i, mine.filter);
         item.addEventListener("click", open);
         item.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); open(); } });
         grid.append(item);
       });
-      preload(res.votes.map((v) => v.cell.src));
       const pages = Math.max(1, Math.ceil(res.total / PAGE));
       if (mine.page >= pages && mine.page > 0) { mine.page = pages - 1; return renderMine(); }
       const noun = { all: "votes", findable: "findable votes", not_findable: "not-findable votes", disagree: "disagreements" }[mine.filter];
@@ -474,7 +491,7 @@
     for (const e of document.querySelectorAll(".tab")) { const on = e.dataset.tab === tab; e.classList.toggle("active", on); e.setAttribute("aria-selected", on ? "true" : "false"); }
   }
   function showView(name) { $("view-vote").hidden = name !== "vote"; $("view-mine").hidden = name !== "mine"; }
-  function showEmpty() { $("view-vote").hidden = true; $("votebar").hidden = true; hide("loading"); $("empty").hidden = false; }
+  function showEmpty() { $("view-vote").hidden = true; $("votebar").hidden = true; $("toolbar").hidden = false; hide("loading"); $("empty").hidden = false; }
 
   // ── ui helpers ───────────────────────────────────────────────────────────────────────────────────
   const hide = (id) => { $(id).hidden = true; };
@@ -516,9 +533,9 @@
     console.error(e);
   }
   let toastTimer = 0;
-  function toast(msg) {
+  function toast(msg, ms = 3000) {
     const t = $("toast"); t.textContent = msg; t.hidden = false;
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3000);
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, ms);
   }
   function flash(label) {
     const qc = $("q-cell");
@@ -556,7 +573,7 @@
 
   // ── help / name / annotator code dialog ──────────────────────────────────────────────────────────
   const dlg = $("dlg-help");
-  function openHelp() { $("inp-name").value = userName; $("my-code").textContent = userId; $("inp-code").value = ""; dlg.showModal(); }
+  function openHelp() { $("inp-name").value = userName; $("my-code").textContent = userId; $("inp-code").value = ""; dlg.showModal(); dlg.scrollTop = 0; }
   dlg.addEventListener("close", () => {
     const newName = $("inp-name").value.trim().slice(0, 40);
     const renamed = newName !== userName;
@@ -614,6 +631,7 @@
   $("lightbox-close").addEventListener("click", (ev) => { ev.stopPropagation(); $("lightbox").hidden = true; });
   $("chk-skip-voted").addEventListener("change", (ev) => {
     if (busy) { ev.target.checked = skipVoted; return; }
+    ev.target.blur();
     skipVoted = ev.target.checked; store.set("skip_voted", skipVoted ? "1" : "0");
     toast(skipVoted ? "Showing only queries without votes." : "Showing every query in order, including voted ones.");
     if (isSplit(tab) && !review) restart(tab);
@@ -628,22 +646,22 @@
     jumpTo(tab, clamped - 1);
   });
   document.addEventListener("keydown", (ev) => {
-    if (dlg.open || dlgNote.open || dlgPass.open || ["INPUT", "TEXTAREA"].includes(ev.target.tagName)) return;
+    if (ev.repeat || dlg.open || dlgNote.open || dlgPass.open || ["INPUT", "TEXTAREA"].includes(ev.target.tagName)) return;
     if (ev.key === "Escape") { $("lightbox").hidden = true; return; }
     if (!$("lightbox").hidden || !isSplit(tab)) return;
     const k = ev.key.toLowerCase();
     if (k === "1" || k === "f") onLabel("findable");
     else if (k === "2" || k === "j") onLabel("not_findable");
     else if (k === "s") skip();
-    else if (k === "n") openNote();
+    else if (k === "n") { ev.preventDefault(); openNote(); }
     else if (ev.key === "ArrowLeft") $("btn-back").click();
     else if (ev.key === "ArrowRight" && review) $("btn-fwd").click();
   });
 
   // ── go ───────────────────────────────────────────────────────────────────────────────────────────
   renderName(); renderTabs(); renderCounts(); refreshButtons();
-  if (!C || !C.SUPABASE_URL || C.SUPABASE_URL.includes("YOUR-PROJECT")) {
-    showError(new Error("config.js is not filled in yet (SUPABASE_URL / SUPABASE_ANON_KEY / DATA_BASE_URL)."));
+  if (!configured()) {
+    showError(new Error(CONFIG_MSG));
     return;
   }
   if (!passcode) { openPass("Enter the passcode you were given for this study."); return; }
