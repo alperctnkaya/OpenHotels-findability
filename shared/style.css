@@ -191,6 +191,14 @@ svg:not(.sprite) { width: 18px; height: 18px; fill: none; stroke: currentColor; 
 .badge { position: absolute; top: 8px; left: 8px; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: var(--panel); box-shadow: 0 1px 3px rgba(0,0,0,.35); }
 .badge svg { width: 16px; height: 16px; }
 .badge.yes { color: var(--yes); } .badge.no { color: var(--no); }
+.badge svg { stroke-width: 2.6; }
+.qbox .badge.mark { top: 10px; left: 10px; width: 36px; height: 36px; }
+.qbox .badge.mark svg { width: 22px; height: 22px; }
+.linkbtn { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.toppanel { margin-bottom: 22px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.toppanel h2 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.topgrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px 14px; }
+@media (max-width: 760px) { .topgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .pager { display: flex; justify-content: center; align-items: center; gap: 16px; margin: 20px 0 32px; }
 
 /* ── states ───────────────────────────────────────────────────────────────────────────────────── */

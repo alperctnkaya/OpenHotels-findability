@@ -244,6 +244,47 @@
     t.hidden = false;
   }
 
+  function renderModel(q, info) {
+    const top = info && info.top;
+    const panel = $("top-panel");
+    panel.hidden = true; $("top-grid").replaceChildren();
+    $("m-model-row").hidden = !(top && top.length);
+    if (!top || !top.length) return;
+    const rank = top.findIndex((t) => t.hotel === q.hotel_id);
+    const badge = el("span", `badge mark ${rank === 0 ? "yes" : "no"}`);
+    badge.title = rank === 0 ? "The model's top match is from this hotel" : "The model's top match is from another hotel";
+    badge.append(icon(rank === 0 ? "i-check" : "i-close"));
+    $("q-cell").querySelector(".qbox").append(badge);
+    $("top-k").textContent = top.length;
+    const label = (open) => `${open ? "Hide" : "Show"} its top ${top.length}`;
+    const btn = el("button", "linkbtn", label(false)); btn.type = "button"; btn.setAttribute("aria-expanded", "false");
+    btn.addEventListener("click", () => {
+      const open = panel.hidden;
+      panel.hidden = !open; btn.textContent = label(open); btn.setAttribute("aria-expanded", String(open));
+      if (open && !$("top-grid").childElementCount) fillTop(q, top);
+      if (open) requestAnimationFrame(() => panel.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+    });
+    $("m-model").replaceChildren(rank === 0 ? "top match is this hotel" : rank > 0 ? `this hotel first at rank ${rank + 1}` : `this hotel is not in its top ${top.length}`, " · ", btn);
+  }
+  function fillTop(q, top) {
+    const grid = $("top-grid");
+    top.forEach((t, k) => {
+      const same = t.hotel === q.hotel_id;
+      const card = el("figure", "card");
+      const fr = framedCell(t, 4 / 3);
+      const badge = el("span", `badge ${same ? "yes" : "no"}`);
+      badge.title = same ? "this hotel" : "another hotel"; badge.append(icon(same ? "i-check" : "i-close"));
+      fr.append(badge);
+      fr.addEventListener("click", () => lightbox(t));
+      const cap = el("figcaption");
+      const name = same ? "this hotel" : (q.hotel.names && q.hotel.names[t.hotel]) || `hotel ${t.hotel}`;
+      const who = el("span", "view-type", `${k + 1}. ${name}`); who.title = name;
+      const sim = el("span", "sim"); sim.append("sim ", el("b", null, Number(t.sim).toFixed(3)));
+      const meta = el("span", "date tnum"); meta.append(el("span", null, `hotel ${t.hotel}`));
+      cap.append(who, sim, meta);
+      card.append(fr, cap); grid.append(card);
+    });
+  }
   function renderQuery(q, rev) {
     const info = q.hotel.queries[q.qid];
     const isObj = info ? info.is_object : q.qid.startsWith("test_object");
@@ -266,6 +307,7 @@
     const room = info && info.room;
     $("m-room-row").hidden = !room;
     if (room) $("m-room").textContent = room;
+    renderModel(q, info);
     $("m-debug-row").hidden = !debug;
     if (debug) $("m-debug").textContent = `best sim ${info ? info.best_sim : "?"} · rank ${q.rank}`;
 

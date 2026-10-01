@@ -21,6 +21,7 @@
   <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 5 0c0 1.7-2.5 2-2.5 4"/><path d="M12 17h.01"/></symbol>
   <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
   <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></symbol>
 </svg>
 
 <header class="bar">
@@ -67,10 +68,15 @@
         <div><dt>Query</dt><dd id="m-qid" class="tnum"></dd></div>
         <div><dt>Taken</dt><dd id="m-date" class="tnum"></dd></div>
         <div id="m-room-row" hidden><dt>Room</dt><dd id="m-room" class="tnum"></dd></div>
-        <div id="m-debug-row" hidden><dt>Model</dt><dd id="m-debug" class="tnum"></dd></div>
+        <div id="m-model-row" hidden><dt>Model</dt><dd id="m-model"></dd></div>
+        <div id="m-debug-row" hidden><dt>Debug</dt><dd id="m-debug" class="tnum"></dd></div>
       </dl>
     </section>
     <section class="gallery" aria-label="Photos of this hotel">
+      <div class="toppanel" id="top-panel" hidden>
+        <h2><span>The model's top <span id="top-k"></span></span> <span class="sub">most similar photos in the whole gallery</span></h2>
+        <div class="topgrid" id="top-grid"></div>
+      </div>
       <h2>Photos of this hotel <span class="num" id="g-count"></span>
         <label class="colsctl" for="inp-cols">Per row<input id="inp-cols" type="range" min="1" max="5" step="1" value="4"><output id="out-cols" class="tnum" for="inp-cols">4</output></label>
         <span class="sub">sorted by cosine similarity to the query</span></h2>
