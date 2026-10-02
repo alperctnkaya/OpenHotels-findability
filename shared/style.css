@@ -118,8 +118,9 @@ svg:not(.sprite) { width: 18px; height: 18px; fill: none; stroke: currentColor; 
 .toolbar { min-height: var(--toolbar-h); background: var(--panel-2); border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-2); flex-wrap: wrap; row-gap: 6px; padding-block: 4px; }
 .pos { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
 .stepper { display: inline-flex; align-items: center; gap: 4px; }
-.stepper .step { min-height: 30px; padding: 0 6px; border-color: var(--line-2); background: var(--panel); color: var(--ink); }
-.stepper .step:hover:not(:disabled) { border-color: var(--accent); background: var(--panel); }
+.pos .step { min-height: 30px; padding: 0 6px; border-color: var(--line-2); background: var(--panel); color: var(--ink); }
+.pos .step:hover:not(:disabled) { border-color: var(--accent); background: var(--panel); }
+.pos .first { padding: 0 10px; gap: 6px; }
 .jump { display: inline-flex; align-items: center; gap: 6px; }
 .jump label { color: var(--ink-3); white-space: nowrap; }
 .jump input { width: 84px; min-height: 30px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--panel); text-align: right; font-variant-numeric: tabular-nums; }
@@ -140,7 +141,9 @@ svg:not(.sprite) { width: 18px; height: 18px; fill: none; stroke: currentColor; 
 /* ── vote view ────────────────────────────────────────────────────────────────────────────────── */
 .view { max-width: 1440px; margin: 0 auto; padding: 16px 20px 112px; }
 .notice { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; padding: 10px 14px; border-radius: var(--radius-sm); margin-bottom: 12px; font-size: 14px; border: 1px solid var(--line); background: var(--panel); }
-.notice.review { display: block; border-color: var(--accent-soft); background: var(--accent-soft); color: var(--ink); }
+.notice.review { align-items: center; justify-content: space-between; border-color: var(--accent-soft); background: var(--accent-soft); color: var(--ink); }
+.revnav { display: inline-flex; gap: 4px; flex: none; }
+.revnav .ghost { min-height: 30px; padding: 0 10px; gap: 4px; color: var(--ink); }
 .notice.tally .names { color: var(--ink-2); font-size: 13px; }
 .notice.tally.full { border-color: var(--warn-line); background: var(--warn-soft); color: var(--warn); }
 .notice.tally.full .names { color: inherit; opacity: .85; }
@@ -202,6 +205,13 @@ svg:not(.sprite) { width: 18px; height: 18px; fill: none; stroke: currentColor; 
 .toppanel h2 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .topgrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px 14px; }
 @media (max-width: 760px) { .topgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+#btn-note .when-sent { display: none; }
+#btn-note.sent .when-sent { display: inline; }
+#btn-note.sent .when-unsent { display: none; }
+#btn-note.sent { color: var(--yes); }
+.note-msg { display: flex; align-items: center; gap: 6px; margin: 10px 0 0; font-size: 14px; }
+.note-msg.ok { color: var(--yes); font-weight: 600; }
+.note-msg.problem { color: var(--no); }
 .pager { display: flex; justify-content: center; align-items: center; gap: 16px; margin: 20px 0 32px; }
 
 /* ── states ───────────────────────────────────────────────────────────────────────────────────── */
@@ -288,6 +298,7 @@ dialog input::placeholder, dialog textarea::placeholder { color: var(--ink-3); }
 }
 @media (max-width: 760px) {
   .bar-row { padding: 0 12px; gap: 10px; }
+  .toolbar { padding-block: 6px; }
   .view { padding: 12px 12px 140px; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px 10px; }
   .verdict { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); }
@@ -296,8 +307,12 @@ dialog input::placeholder, dialog textarea::placeholder { color: var(--ink-3); }
   .verdict-btn kbd, .ghost kbd { display: none; }
   .progress { display: none; }
   .ghost, .primary, .seg button, .switch { min-height: 44px; }
-  .jump input, .jump .ghost, .stepper .step { min-height: 40px; }
+  .jump input, .jump .ghost, .pos .step { min-height: 40px; }
   .stepper .step { min-width: 40px; justify-content: center; }
+  .pos .hint { display: none; }
+  .pos .first { order: 1; }
+  .stepper { order: 2; }
+  .revnav .ghost { min-height: 40px; }
   .toast { bottom: 124px; }
 }
 @media (max-width: 560px) {

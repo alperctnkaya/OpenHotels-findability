@@ -148,8 +148,8 @@
   let shownAt = 0;
 
   // ── queue ────────────────────────────────────────────────────────────────────────────────────────
-  async function pull(split, fromRank, exclude, ahead) {
-    const res = await rpc("next_query", { p_user: userId, p_split: split, p_from_rank: fromRank, p_skip_voted: skipVoted, p_exclude: exclude || null });
+  async function pull(split, fromRank, exclude, ahead, open = skipVoted) {   // open: only queries nobody has voted on
+    const res = await rpc("next_query", { p_user: userId, p_split: split, p_from_rank: fromRank, p_skip_voted: open, p_exclude: exclude || null });
     if (res.error) throw new Error(`next_query: ${res.error}`);
     progress[split] = res.progress;
     if (res.mine) myCounts = { ...myCounts, ...res.mine };
@@ -196,14 +196,14 @@
     }
   }
 
-  async function advance(split) {
+  async function advance(split, open = false) {
     const L = live[split];
     busy = true; refreshButtons(); hide("error");
     if (tab === split) $("loading").hidden = false;
     try {
       let q = null;
       if (L.next) { q = await L.next.catch(() => null); L.next = null; }
-      if (!q) q = await pull(split, pos[split], null);
+      if (!q) q = await pull(split, pos[split], null, false, open || skipVoted);
       L.cur = q;
       if (q) {
         pos[split] = q.rank; store.set(`pos_${split}`, String(q.rank));
@@ -219,6 +219,14 @@
     } finally {
       busy = false; refreshButtons();
     }
+  }
+
+  async function firstOpen() {                       // the lowest position nobody has voted on, whatever the switch says
+    if (busy || !isSplit(tab)) return;
+    const L = live[tab];
+    review = null; L.cur = null; L.next = null; pos[tab] = 0;
+    await advance(tab, true);
+    if (L.cur && !review) toast(`Position ${fmt(L.cur.rank + 1)} is the first query nobody has voted on yet.`);
   }
 
   function restart(split) {                           // settings changed (filter / position): drop prefetch, pull again
@@ -340,8 +348,20 @@
       const when = new Date(rev.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
       const fname = { findable: "findable answers", not_findable: "not-findable answers", disagree: "disagreements" }[rev.filter] || "answers";
       const which = rev.offset == null ? "Your answer for this query" : `Your ${rev.total - rev.offset} of ${rev.total} ${fname} for ${SPLITS[rev.split].label}`;
-      b.append(`${which}, cast ${when}${rev.updated_at ? ", changed later" : ""}: `);
-      b.append(el("b", null, labelText(rev.label)), ". Press the other button to change it.");
+      const txt = el("span");
+      txt.append(`${which}, cast ${when}${rev.updated_at ? ", changed later" : ""}: `, el("b", null, labelText(rev.label)), ". Press the other button to change it.");
+      b.append(txt);
+      if (rev.offset != null) {                          // opened from "My votes": walk through this user's answers
+        const step = (text, ic, off, ok) => {
+          const x = el("button", "ghost"); x.type = "button"; x.disabled = !ok;
+          if (ic === "i-prev") x.append(icon(ic), text); else x.append(text, icon(ic));
+          x.addEventListener("click", () => openReview(rev.split, off, rev.filter));
+          return x;
+        };
+        const nav = el("span", "revnav");
+        nav.append(step("Older", "i-prev", rev.offset + 1, rev.offset + 1 < rev.total), step("Newer", "i-next", rev.offset - 1, rev.offset > 0));
+        b.append(nav);
+      }
     } else {
       b.hidden = true;
     }
@@ -400,7 +420,7 @@
       if (res.status === "ok" && v && v.n) { if (label === "findable") { v.up += 1; v.down -= 1; } else { v.up -= 1; v.down += 1; } }
       r.vote.label = label; r.vote.updated_at = new Date().toISOString();
       toast(`Changed to ${labelText(label).toLowerCase()}.`);
-      renderQuery(r.q, { ...r.vote, split: r.split, offset: r.offset, total: r.total });
+      renderQuery(r.q, { ...r.vote, split: r.split, offset: r.offset, total: r.total, filter: r.filter });
     } catch (e) {
       showError(e);
     } finally {
@@ -422,26 +442,49 @@
   // ── notes to the admin (on any query) ────────────────────────────────────────────────────────────
   const dlgNote = $("dlg-note");
   function currentQuery() { return review ? review.q : (isSplit(tab) ? live[tab].cur : null); }
+  const notesSent = new Set();                        // qids this browser sent a note about since the page was loaded
+  let noteQ = null;                                   // the query the dialog is about
+  function noteMsg(text, kind) {
+    const m = $("note-msg"); m.className = `note-msg ${kind || ""}`; m.replaceChildren();
+    if (kind === "ok") m.append(icon("i-check"));
+    m.append(text || ""); m.hidden = !text;
+  }
+  function noteBusy(on) { $("btn-note-send").disabled = on; $("btn-note-cancel").disabled = on; $("inp-note").disabled = on; }
   function openNote() {
     const q = currentQuery();
     if (!q || dlgNote.open || busy) return;
     const v = q.votes || { n: 0, up: 0, down: 0 };
-    $("note-ctx").textContent = `About ${q.qid} (hotel ${q.hotel_id}, position ${fmt(q.rank + 1)}). Votes so far: ${v.up} findable, ${v.down} not findable. Only the admin reads these.`;
-    $("inp-note").value = "";
+    $("note-ctx").textContent = `About ${q.qid} (hotel ${q.hotel_id}, position ${fmt(q.rank + 1)}). Votes so far: ${v.up} findable, ${v.down} not findable. Only the admin reads these.`
+      + (notesSent.has(q.qid) ? " You already sent a note about this query; a new one is added to it." : "");
+    if (!noteQ || noteQ.qid !== q.qid) $("inp-note").value = "";      // a draft that failed to send is kept for its query
+    noteQ = q; noteBusy(false); noteMsg("");
     dlgNote.showModal();
   }
-  dlgNote.addEventListener("close", async () => {
-    const q = currentQuery();
-    const text = $("inp-note").value.trim();
-    if (dlgNote.returnValue !== "send" || !q) return;
-    if (!text) { toast("Empty note, nothing sent."); return; }
+  async function sendNote() {
+    const q = noteQ; const text = $("inp-note").value.trim();
+    if (!q || $("btn-note-send").disabled) return;
+    if (!text) { noteMsg("Write something first.", "problem"); $("inp-note").focus(); return; }
+    noteBusy(true); noteMsg("Sending…");
     try {
       const res = await rpc("add_note", { p_user: userId, p_qid: q.qid, p_note: text, p_name: userName || null });
-      if (res.status === "not_full") { toast("The server still only accepts notes on queries with three votes, so this one was not stored. Please tell the organiser.", 9000); return; }
-      if (res.status !== "ok") throw new Error(`Note rejected: ${res.status}`);
-      toast("Note sent to the admin. Thank you.");
-    } catch (e) { showError(e); }
+      if (res.status === "not_full") throw new Error("the server still only accepts notes on queries with three votes. Please tell the organiser.");
+      if (res.status !== "ok") throw new Error(`the server refused it (${res.status}).`);
+      notesSent.add(q.qid); $("inp-note").value = ""; refreshButtons();
+      if (dlgNote.open) { noteMsg("Sent to the admin. Thank you.", "ok"); setTimeout(() => { if (dlgNote.open && noteQ === q) dlgNote.close(); }, 1600); }
+      else toast("Note sent to the admin. Thank you.");
+    } catch (e) {
+      noteBusy(false);
+      if (e instanceof PassError) { dlgNote.close(); showError(e); return; }
+      const why = String(e && e.message ? e.message : e).replace(/^\w/, (c) => c.toLowerCase());
+      const end = /[.!?]$/.test(why) ? "" : ".";
+      if (dlgNote.open) noteMsg(`Not sent: ${why}${end} Your text is still here; try again.`, "problem");
+      else toast(`The note was not sent: ${why}`, 9000);
+    }
+  }
+  dlgNote.querySelector("form").addEventListener("submit", (ev) => {
+    if (ev.submitter && ev.submitter.value === "send") { ev.preventDefault(); sendNote(); }
   });
+  $("inp-note").addEventListener("keydown", (ev) => { if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); sendNote(); } });
 
   // ── reviewing earlier votes ──────────────────────────────────────────────────────────────────────
   async function openReview(split, offset, filter = "all") {
@@ -543,9 +586,14 @@
     $("btn-yes").disabled = !can || full; $("btn-no").disabled = !can || full;
     $("btn-skip").disabled = !can || !!review;
     $("btn-note").disabled = !can;
+    const noted = !!shown && notesSent.has(shown.qid);
+    $("btn-note").classList.toggle("sent", noted);
+    $("note-icon").setAttribute("href", noted ? "#i-check" : "#i-note");
+    $("btn-note").title = noted ? "You sent the admin a note about this query; click to send another" : "Send the admin a remark about this query";
     const p = isSplit(tab) ? progress[tab] : null;
     $("btn-prev-pos").disabled = busy || !shown || shown.rank <= 0;
     $("btn-next-pos").disabled = busy || !shown || !p || shown.rank + 1 >= p.queries;
+    $("btn-first-open").disabled = busy || !isSplit(tab);
     $("btn-exit").disabled = busy;
     $("chk-skip-voted").checked = skipVoted;
   }
@@ -560,7 +608,7 @@
     $("mine-title").textContent = total ? `You have voted on ${fmt(total)} quer${total === 1 ? "y" : "ies"}` : "Your votes";
     if (isSplit(tab) && progress[tab]) {
       const p = progress[tab]; const q = currentQuery();
-      $("status-pos").textContent = q ? `Position ${fmt(q.rank + 1)} of ${fmt(p.queries)}, hardest first` : `${fmt(p.queries)} ${SPLITS[tab].label}, hardest first`;
+      $("status-pos").replaceChildren(q ? `Position ${fmt(q.rank + 1)} of ${fmt(p.queries)}` : `${fmt(p.queries)} ${SPLITS[tab].label}`, el("span", "hint", ", hardest first"));
       $("status-progress").textContent = `${fmt(p.voted)} have a vote · ${fmt(p.votes)} votes · you ${fmt(myCounts[tab] || 0)}`;
       $("inp-pos").max = String(p.queries);
     }
@@ -663,6 +711,7 @@
   }
   $("btn-prev-pos").addEventListener("click", () => stepPos(-1));
   $("btn-next-pos").addEventListener("click", () => stepPos(1));
+  $("btn-first-open").addEventListener("click", firstOpen);
   $("btn-exit").addEventListener("click", () => { if (!busy && review) exitReview(); });
   $("btn-retry").addEventListener("click", () => {
     hide("error");
