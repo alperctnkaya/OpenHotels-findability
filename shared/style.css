@@ -25,7 +25,11 @@
   --radius-sm: 6px;
   --bar-h: 52px;
   --toolbar-h: 44px;
+  --head-h: 97px;              /* real header and vote bar heights, kept up to date by app.js */
+  --foot-h: 65px;
+  --vh: 100vh;
 }
+@supports (height: 100dvh) { :root { --vh: 100dvh; } }
 @media (prefers-color-scheme: dark) {
   :root {
     --canvas: #15171b;
@@ -117,7 +121,10 @@ svg:not(.sprite) { width: 18px; height: 18px; fill: none; stroke: currentColor; 
 
 .toolbar { min-height: var(--toolbar-h); background: var(--panel-2); border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-2); flex-wrap: wrap; row-gap: 6px; padding-block: 4px; }
 .pos { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
-.stepper { display: inline-flex; align-items: center; gap: 4px; }
+.stepper { display: inline-flex; align-items: center; }
+.stepper .step:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.stepper .step + .step { margin-left: -1px; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.stepper .step:hover:not(:disabled), .stepper .step:focus-visible { position: relative; z-index: 1; }
 .pos .step { min-height: 30px; padding: 0 6px; border-color: var(--line-2); background: var(--panel); color: var(--ink); }
 .pos .step:hover:not(:disabled) { border-color: var(--accent); background: var(--panel); }
 .pos .first { padding: 0 10px; gap: 6px; }
@@ -125,6 +132,7 @@ svg:not(.sprite) { width: 18px; height: 18px; fill: none; stroke: currentColor; 
 .jump label { color: var(--ink-3); white-space: nowrap; }
 .jump input { width: 84px; min-height: 30px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--panel); text-align: right; font-variant-numeric: tabular-nums; }
 .jump input::placeholder { color: var(--ink-3); }
+.jump input:focus::placeholder { color: transparent; }
 .jump .ghost { min-height: 30px; padding: 0 10px; }
 .progress { margin-left: auto; color: var(--ink-3); }
 
@@ -139,7 +147,7 @@ svg:not(.sprite) { width: 18px; height: 18px; fill: none; stroke: currentColor; 
 .switch:hover .track { filter: brightness(.96); }
 
 /* ── vote view ────────────────────────────────────────────────────────────────────────────────── */
-.view { max-width: 1440px; margin: 0 auto; padding: 16px 20px 112px; }
+.view { max-width: 1440px; margin: 0 auto; padding: 16px 20px calc(var(--foot-h) + 32px); }
 .notice { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; padding: 10px 14px; border-radius: var(--radius-sm); margin-bottom: 12px; font-size: 14px; border: 1px solid var(--line); background: var(--panel); }
 .notice.review { align-items: center; justify-content: space-between; border-color: var(--accent-soft); background: var(--accent-soft); color: var(--ink); }
 .revnav { display: inline-flex; gap: 4px; flex: none; }
@@ -150,8 +158,14 @@ svg:not(.sprite) { width: 18px; height: 18px; fill: none; stroke: currentColor; 
 .question { margin: 4px 0 16px; max-width: none; }
 .question span { color: var(--accent); }
 
-.cols { display: grid; grid-template-columns: minmax(300px, 5fr) minmax(0, 8fr); gap: 28px; align-items: start; }
-.query { position: sticky; top: calc(var(--bar-h) + var(--toolbar-h) + 12px); max-height: calc(100vh - var(--bar-h) - var(--toolbar-h) - 104px); overflow-y: auto; scrollbar-width: thin; }
+/* Wide screens: the query sticks from the start (nothing above it scrolls away) and its photo is sized so photo and
+   details fit between header and vote bar; only the right column scrolls.  --ar is the photo's aspect ratio (app.js). */
+.cols { display: grid; grid-template-columns: minmax(300px, 5fr) minmax(0, 8fr); grid-template-areas: "query lead" "query gallery"; column-gap: 28px; align-items: start; }
+.lead { grid-area: lead; min-width: 0; }
+.gallery { grid-area: gallery; min-width: 0; }
+.query { grid-area: query; position: sticky; top: calc(var(--head-h) + 16px);
+         --q-h: max(220px, calc(var(--vh) - var(--head-h) - var(--foot-h) - var(--meta-h, 180px) - 48px)); }
+.cell.qbox { width: min(100%, calc(var(--q-h) * var(--ar, 1.333))); }
 .qbox { border-radius: var(--radius); box-shadow: var(--shadow); cursor: zoom-in; margin: 0 auto; }
 .meta { margin: 14px 0 0; display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; font-size: 13px; }
 .meta div { display: contents; }
@@ -219,10 +233,10 @@ svg:not(.sprite) { width: 18px; height: 18px; fill: none; stroke: currentColor; 
 .state h2 { color: var(--ink); font-size: 18px; margin-bottom: 8px; }
 .state p { margin: 0 auto 16px; }
 .state.problem { padding: 20px; border: 1px solid var(--no-line); border-radius: var(--radius); background: var(--no-soft); color: var(--ink); }
-#error { position: fixed; z-index: 25; top: calc(var(--bar-h) + var(--toolbar-h) + 12px); left: 50%; transform: translateX(-50%); width: min(92vw, 520px); margin: 0; box-shadow: var(--shadow-pop); }
+#error { position: fixed; z-index: 25; top: calc(var(--head-h) + 12px); left: 50%; transform: translateX(-50%); width: min(92vw, 520px); margin: 0; box-shadow: var(--shadow-pop); }
 .cell.failed img { visibility: hidden; }
 .cell.failed::after { content: "did not load"; position: absolute; inset: 0; display: grid; place-items: center; color: var(--ink); font-size: 12px; }
-.toast { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); z-index: 30; max-width: min(92vw, 520px); padding: 10px 14px; border-radius: var(--radius-sm); background: var(--ink); color: var(--canvas); font-size: 13px; box-shadow: var(--shadow-pop); }
+.toast { position: fixed; left: 50%; bottom: calc(var(--foot-h) + 16px); transform: translateX(-50%); z-index: 30; max-width: min(92vw, 520px); padding: 10px 14px; border-radius: var(--radius-sm); background: var(--ink); color: var(--canvas); font-size: 13px; box-shadow: var(--shadow-pop); }
 
 /* ── verdict bar ──────────────────────────────────────────────────────────────────────────────── */
 .verdict {
@@ -279,10 +293,14 @@ dialog input::placeholder, dialog textarea::placeholder { color: var(--ink-3); }
 }
 
 /* ── responsive ───────────────────────────────────────────────────────────────────────────────── */
-@media (max-width: 1000px) {
-  .cols { grid-template-columns: 1fr; gap: 20px; }
-  .query { position: static; max-height: none; overflow: visible; }
-  .qbox { max-width: 640px; }
+@media (min-width: 1001px) and (max-height: 620px) {
+  .query { position: static; }                  /* too short to keep the query in view: let it scroll with the page */
+}
+@media (max-width: 1000px) {                    /* one column: the page scrolls as a whole, only the vote bar stays */
+  .bar { position: static; }
+  .cols { grid-template-columns: 1fr; grid-template-areas: "lead" "query" "gallery"; }
+  .query { position: static; margin-bottom: 20px; }
+  .cell.qbox { max-width: 640px; width: min(100%, calc(90% * var(--ar, 1.333))); }
 }
 @media (max-width: 960px) {
   .wordmark .tag { display: none; }
@@ -299,7 +317,7 @@ dialog input::placeholder, dialog textarea::placeholder { color: var(--ink-3); }
 @media (max-width: 760px) {
   .bar-row { padding: 0 12px; gap: 10px; }
   .toolbar { padding-block: 6px; }
-  .view { padding: 12px 12px 140px; }
+  .view { padding: 12px 12px calc(var(--foot-h) + 24px); }
   .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px 10px; }
   .verdict { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); }
   .middle { grid-column: 1 / -1; justify-content: center; order: -1; }
@@ -310,10 +328,9 @@ dialog input::placeholder, dialog textarea::placeholder { color: var(--ink-3); }
   .jump input, .jump .ghost, .pos .step { min-height: 40px; }
   .stepper .step { min-width: 40px; justify-content: center; }
   .pos .hint { display: none; }
-  .pos .first { order: 1; }
-  .stepper { order: 2; }
+  .pos .first { padding: 0 8px; }
+  .jump input { width: 64px; }
   .revnav .ghost { min-height: 40px; }
-  .toast { bottom: 124px; }
 }
 @media (max-width: 560px) {
   .rubric li { grid-template-columns: 1fr; gap: 4px; }

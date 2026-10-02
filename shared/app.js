@@ -301,8 +301,7 @@
 
     const qc = $("q-cell"); qc.replaceChildren(); qc.classList.remove("flash-yes", "flash-no");
     const box = cellEl(q.cell); box.classList.add("qbox");
-    const ar = q.cell.w / q.cell.h;
-    if (ar < 1) box.style.width = `${Math.round(ar * 90)}%`;              // keep portrait queries from getting too tall
+    box.style.setProperty("--ar", (q.cell.w / q.cell.h).toFixed(4));    // style.css sizes the query photo from it
     box.addEventListener("click", () => lightbox(q.cell));
     qc.append(box);
 
@@ -758,6 +757,16 @@
   }
   $("inp-cols").addEventListener("input", (ev) => setCols(+ev.target.value, true));
   $("inp-cols").addEventListener("pointerup", (ev) => ev.target.blur());
+
+  // the real heights of the header, the vote bar and the query details: the sticky query column and its photo size use them
+  function trackHeight(elem, name, target) {
+    const set = () => target.style.setProperty(name, `${elem.offsetHeight}px`);
+    set();
+    if ("ResizeObserver" in window) new ResizeObserver(set).observe(elem);
+  }
+  trackHeight(document.querySelector(".bar"), "--head-h", document.documentElement);
+  trackHeight($("votebar"), "--foot-h", document.documentElement);
+  trackHeight(document.querySelector(".meta"), "--meta-h", document.querySelector(".query"));
 
   // ── go ───────────────────────────────────────────────────────────────────────────────────────────
   setCols(galCols(), false);

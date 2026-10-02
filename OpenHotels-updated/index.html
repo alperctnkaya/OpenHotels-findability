@@ -41,15 +41,15 @@
   <div class="bar-row toolbar" id="toolbar" hidden>
     <div class="pos">
       <span id="status-pos" class="tnum">Position –</span>
-      <div class="stepper">
+      <div class="stepper" role="group" aria-label="Step one position">
         <button type="button" class="ghost step" id="btn-prev-pos" title="Previous position (←)" aria-label="Previous position"><svg><use href="#i-prev"/></svg></button>
-        <form id="jump-form" class="jump">
-          <label for="inp-pos">Go to</label>
-          <input id="inp-pos" type="number" min="1" step="1" inputmode="numeric" placeholder="1">
-          <button type="submit" class="ghost">Go</button>
-        </form>
         <button type="button" class="ghost step" id="btn-next-pos" title="Next position (→)" aria-label="Next position"><svg><use href="#i-next"/></svg></button>
       </div>
+      <form id="jump-form" class="jump">
+        <label for="inp-pos">Go to</label>
+        <input id="inp-pos" type="number" min="1" step="1" inputmode="numeric" placeholder="#">
+        <button type="submit" class="ghost">Go</button>
+      </form>
       <button type="button" class="ghost step first" id="btn-first-open" title="Jump to the first query nobody has voted on yet"><svg><use href="#i-first"/></svg>First unvoted</button>
     </div>
     <label class="switch" for="chk-skip-voted">
@@ -62,10 +62,12 @@
 </header>
 
 <main id="view-vote" class="view" hidden>
-  <div class="notice review" id="review-banner" hidden></div>
-  <div class="notice tally" id="tally" hidden></div>
-  <h1 class="question">Could a careful person tell that this <span id="q-kind">photo</span> was taken in this hotel, using the hotel's photos?</h1>
   <div class="cols">
+    <div class="lead">
+      <div class="notice review" id="review-banner" hidden></div>
+      <div class="notice tally" id="tally" hidden></div>
+      <h1 class="question">Could a careful person tell that this <span id="q-kind">photo</span> was taken in this hotel, using the hotel's photos?</h1>
+    </div>
     <section class="query" aria-label="Query image">
       <div id="q-cell"></div>
       <dl class="meta">
@@ -169,7 +171,7 @@
   <p>Queries come in a fixed order, hardest for the model first; the goal is <b>one vote per query</b>. Votes that others
      already cast are shown above the images, and you can add yours as long as a query has fewer than three. The
      <b>skip queries that already have votes</b> switch is on at first, so you see only untouched queries; switch it off
-     to go through every query in order. <b>Go to</b> jumps to a position, and the arrows on either side of it step one
+     to go through every query in order. <b>Go to</b> jumps to a position, and the arrows next to the position step one
      position back or forward, whatever that query's votes; stepping onto one you answered shows your answer so you can
      change it. <b>First unvoted</b> takes you to the first query nobody has voted on yet. <b>Note to admin</b> is always there: use it to tell us about a query, for example that the image is
      broken or that you disagree with its three votes.</p>
