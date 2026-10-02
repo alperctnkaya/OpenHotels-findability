@@ -137,7 +137,7 @@
   const live = { test_non_object: { cur: null, next: null }, test_object: { cur: null, next: null } };
   const pos = {};                                     // split -> queue position to continue from
   for (const s of Object.keys(SPLITS)) pos[s] = Math.max(0, parseInt(store.get(`pos_${s}`) || "0", 10) || 0);
-  let skipVoted = store.get("skip_voted") === "1";
+  let skipVoted = store.get("skip_voted") !== "0";     // on unless this browser switched it off
   let review = null;                                  // { split, offset, total, vote, q }
   const FILTERS = ["all", "findable", "not_findable", "disagree"];
   const mine = { split: isSplit(store.get("mine_split")) ? store.get("mine_split") : "test_non_object", page: 0,
@@ -162,9 +162,10 @@
              myVote: res.my_vote || null, skipped: !!res.skipped };
   }
 
-  // "Go to": show exactly the query at this position, whatever its votes and whatever the filter says.  One the user
-  // already answered opens in review (so it can be changed); the queue then continues after it.
-  async function jumpTo(split, rank) {
+  // "Go to" and the arrows beside it: show exactly the query at this position, whatever its votes and whatever the filter
+  // says.  One the user already answered opens in review (so it can be changed); the queue then continues after it.
+  // An arrow step is quiet (no toasts) and does not preload the next query's photos.
+  async function jumpTo(split, rank, step = false) {
     busy = true; refreshButtons(); hide("error"); $("loading").hidden = false;
     const L = live[split]; L.cur = null; L.next = null; review = null;
     try {
@@ -177,16 +178,16 @@
       const q = { qid: res.qid, hotel_id: res.hotel_id, idx: res.idx, kind: res.kind, rank: res.queue_rank, full: !!res.full,
                   votes: tally, wrapped: false, cell: res.cell, hotel };
       pos[split] = q.rank + 1; store.set(`pos_${split}`, String(q.rank));
-      L.next = pull(split, q.rank + 1, q.qid, true); L.next.catch(() => {});
+      L.next = pull(split, q.rank + 1, q.qid, !step); L.next.catch(() => {});
       if (res.my_vote) {                                   // already answered: open it as a review of that answer
         review = { split, offset: null, total: myCounts[split] || 0, vote: { qid: q.qid, ...res.my_vote }, q };
         if (tab === split) renderQuery(q, { ...res.my_vote, split, offset: null, total: review.total });
-        toast(`You already answered position ${fmt(q.rank + 1)}; you can change it here.`);
+        if (!step) toast(`You already answered position ${fmt(q.rank + 1)}; you can change it here.`);
       } else {
         L.cur = q;
         if (tab === split) renderQuery(q, null);
         if (res.skipped) toast("You skipped this one earlier.");
-        else if (skipVoted && tally.n) toast("Showing the exact position you asked for, even though it already has votes.");
+        else if (skipVoted && tally.n && !step) toast("Showing the exact position you asked for, even though it already has votes.");
       }
     } catch (e) {
       if (tab === split) showError(e);
@@ -348,8 +349,6 @@
     $("btn-no").classList.toggle("selected", !!rev && rev.label === "not_findable");
     $("btn-skip").hidden = !!rev;
     $("btn-exit").hidden = !rev;
-    $("btn-fwd").hidden = !(rev && rev.offset != null && rev.offset > 0);
-    $("btn-back-label").textContent = rev ? "Older" : "Previous";
     $("toolbar").hidden = !progress[tab];
 
     showView("vote"); $("votebar").hidden = false; hide("loading"); hide("empty"); hide("error");
@@ -420,13 +419,12 @@
     await advance(tab);
   }
 
-  // ── notes to the admin (only on queries that already have their 3 votes) ─────────────────────────
+  // ── notes to the admin (on any query) ────────────────────────────────────────────────────────────
   const dlgNote = $("dlg-note");
   function currentQuery() { return review ? review.q : (isSplit(tab) ? live[tab].cur : null); }
   function openNote() {
     const q = currentQuery();
     if (!q || dlgNote.open || busy) return;
-    if (!q.full) { toast(`Notes can only be sent for queries that already have their ${MAX_VOTES} votes.`); return; }
     const v = q.votes || { n: 0, up: 0, down: 0 };
     $("note-ctx").textContent = `About ${q.qid} (hotel ${q.hotel_id}, position ${fmt(q.rank + 1)}). Votes so far: ${v.up} findable, ${v.down} not findable. Only the admin reads these.`;
     $("inp-note").value = "";
@@ -439,7 +437,7 @@
     if (!text) { toast("Empty note, nothing sent."); return; }
     try {
       const res = await rpc("add_note", { p_user: userId, p_qid: q.qid, p_note: text, p_name: userName || null });
-      if (res.status === "not_full") { toast("This query does not have its three votes yet, so no note was stored."); return; }
+      if (res.status === "not_full") { toast("The server still only accepts notes on queries with three votes, so this one was not stored. Please tell the organiser.", 9000); return; }
       if (res.status !== "ok") throw new Error(`Note rejected: ${res.status}`);
       toast("Note sent to the admin. Thank you.");
     } catch (e) { showError(e); }
@@ -544,10 +542,11 @@
     const shown = review ? review.q : q;
     $("btn-yes").disabled = !can || full; $("btn-no").disabled = !can || full;
     $("btn-skip").disabled = !can || !!review;
-    $("btn-note").hidden = !(shown && shown.full);       // notes only for queries that already have their 3 votes
     $("btn-note").disabled = !can;
-    $("btn-back").disabled = busy || (review ? (review.offset == null || review.offset + 1 >= review.total) : !(isSplit(tab) && myCounts[tab] > 0));
-    $("btn-fwd").disabled = busy; $("btn-exit").disabled = busy;
+    const p = isSplit(tab) ? progress[tab] : null;
+    $("btn-prev-pos").disabled = busy || !shown || shown.rank <= 0;
+    $("btn-next-pos").disabled = busy || !shown || !p || shown.rank + 1 >= p.queries;
+    $("btn-exit").disabled = busy;
     $("chk-skip-voted").checked = skipVoted;
   }
   function renderCounts() {
@@ -560,7 +559,7 @@
     $("cnt-mine").textContent = total ? fmt(total) : "";
     $("mine-title").textContent = total ? `You have voted on ${fmt(total)} quer${total === 1 ? "y" : "ies"}` : "Your votes";
     if (isSplit(tab) && progress[tab]) {
-      const p = progress[tab]; const q = live[tab].cur;
+      const p = progress[tab]; const q = currentQuery();
       $("status-pos").textContent = q ? `Position ${fmt(q.rank + 1)} of ${fmt(p.queries)}, hardest first` : `${fmt(p.queries)} ${SPLITS[tab].label}, hardest first`;
       $("status-progress").textContent = `${fmt(p.voted)} have a vote · ${fmt(p.votes)} votes · you ${fmt(myCounts[tab] || 0)}`;
       $("inp-pos").max = String(p.queries);
@@ -657,12 +656,13 @@
   $("btn-no").addEventListener("click", () => onLabel("not_findable"));
   $("btn-skip").addEventListener("click", skip);
   $("btn-note").addEventListener("click", openNote);
-  $("btn-back").addEventListener("click", () => {
-    if (busy) return;
-    if (review) { if (review.offset != null && review.offset + 1 < review.total) openReview(review.split, review.offset + 1, review.filter); }
-    else if (isSplit(tab)) openReview(tab, 0);
-  });
-  $("btn-fwd").addEventListener("click", () => { if (!busy && review && review.offset != null && review.offset > 0) openReview(review.split, review.offset - 1, review.filter); });
+  function stepPos(d) {                                   // the arrows beside "Go to": exactly one position back / forward
+    const q = currentQuery(); const p = isSplit(tab) ? progress[tab] : null;
+    if (busy || !q || !p || q.rank + d < 0 || q.rank + d >= p.queries) return;
+    jumpTo(tab, q.rank + d, true);
+  }
+  $("btn-prev-pos").addEventListener("click", () => stepPos(-1));
+  $("btn-next-pos").addEventListener("click", () => stepPos(1));
   $("btn-exit").addEventListener("click", () => { if (!busy && review) exitReview(); });
   $("btn-retry").addEventListener("click", () => {
     hide("error");
@@ -696,8 +696,8 @@
     else if (k === "2" || k === "j") onLabel("not_findable");
     else if (k === "s") skip();
     else if (k === "n") { ev.preventDefault(); openNote(); }
-    else if (ev.key === "ArrowLeft") $("btn-back").click();
-    else if (ev.key === "ArrowRight" && review) $("btn-fwd").click();
+    else if (ev.key === "ArrowLeft") stepPos(-1);
+    else if (ev.key === "ArrowRight") stepPos(1);
   });
 
   // gallery columns per row: the saved choice, else a default from the window width

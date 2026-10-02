@@ -40,11 +40,15 @@
   <div class="bar-row toolbar" id="toolbar" hidden>
     <div class="pos">
       <span id="status-pos" class="tnum">Position –</span>
-      <form id="jump-form" class="jump">
-        <label for="inp-pos">Go to</label>
-        <input id="inp-pos" type="number" min="1" step="1" inputmode="numeric" placeholder="1">
-        <button type="submit" class="ghost">Go</button>
-      </form>
+      <div class="stepper">
+        <button type="button" class="ghost step" id="btn-prev-pos" title="Previous position (←)" aria-label="Previous position"><svg><use href="#i-prev"/></svg></button>
+        <form id="jump-form" class="jump">
+          <label for="inp-pos">Go to</label>
+          <input id="inp-pos" type="number" min="1" step="1" inputmode="numeric" placeholder="1">
+          <button type="submit" class="ghost">Go</button>
+        </form>
+        <button type="button" class="ghost step" id="btn-next-pos" title="Next position (→)" aria-label="Next position"><svg><use href="#i-next"/></svg></button>
+      </div>
     </div>
     <label class="switch" for="chk-skip-voted">
       <input type="checkbox" role="switch" id="chk-skip-voted">
@@ -126,8 +130,7 @@
 
 <footer class="verdict" id="votebar" hidden>
   <div class="side">
-    <button class="ghost" id="btn-back" title="Your previous answer (←)"><svg><use href="#i-prev"/></svg><span id="btn-back-label">Previous</span></button>
-    <button class="ghost" id="btn-fwd" hidden title="Your next answer (→)">Newer<svg><use href="#i-next"/></svg></button>
+    <button class="ghost" id="btn-note" title="Send the admin a remark about this query"><svg><use href="#i-note"/></svg>Note<span class="long"> to admin</span><kbd>N</kbd></button>
   </div>
   <div class="middle">
     <button class="verdict-btn yes" id="btn-yes"><svg><use href="#i-up"/></svg>Findable<kbd>1</kbd></button>
@@ -135,7 +138,6 @@
   </div>
   <div class="side end">
     <button class="ghost" id="btn-skip" title="Never show me this query again"><svg><use href="#i-skip"/></svg>Skip<kbd>S</kbd></button>
-    <button class="ghost" id="btn-note" hidden title="This query has its three votes: send a remark to the admin instead"><svg><use href="#i-note"/></svg>Note<span class="long"> to admin</span><kbd>N</kbd></button>
     <button class="ghost strong" id="btn-exit" hidden><svg><use href="#i-back"/></svg>Back<span class="long"> to voting</span></button>
   </div>
 </footer>
@@ -163,14 +165,16 @@
     <li><span class="tag"><svg><use href="#i-skip"/></svg>Skip</span>Broken image or you really cannot decide. Skips do not count and the query is never shown to you again.</li>
   </ul>
   <p>Queries come in a fixed order, hardest for the model first; the goal is <b>one vote per query</b>. Votes that others
-     already cast are shown above the images, and you can add yours as long as a query has fewer than three. Use the
-     <b>skip queries that already have votes</b> switch to see only untouched ones, or <b>Go to</b> a position to
-     continue from there. You are never shown a query you already answered. When a query has its three votes you cannot
-     vote, but <b>Note to admin</b> appears so you can say, for example, that you disagree.</p>
+     already cast are shown above the images, and you can add yours as long as a query has fewer than three. The
+     <b>skip queries that already have votes</b> switch is on at first, so you see only untouched queries; switch it off
+     to go through every query in order. <b>Go to</b> jumps to a position, and the arrows on either side of it step one
+     position back or forward, whatever that query's votes; stepping onto one you answered shows your answer so you can
+     change it. <b>Note to admin</b> is always there: use it to tell us about a query, for example that the image is
+     broken or that you disagree with its three votes.</p>
   <p>There is no right answer; go with your judgement in about ten seconds. Under the gallery photos the number is the
-     model's cosine similarity to the query. <b>My votes</b> lists everything you answered; <b>Previous</b> reopens your
-     last answer, and any answer can be changed. Keys: <kbd>1</kbd> findable, <kbd>2</kbd> not findable, <kbd>S</kbd> skip,
-     <kbd>N</kbd> note, <kbd>←</kbd> previous, <kbd>Esc</kbd> closes an enlarged image.</p>
+     model's cosine similarity to the query. <b>My votes</b> lists everything you answered, and any answer can be changed.
+     Keys: <kbd>1</kbd> findable, <kbd>2</kbd> not findable, <kbd>S</kbd> skip, <kbd>N</kbd> note, <kbd>←</kbd> <kbd>→</kbd>
+     previous / next position, <kbd>Esc</kbd> closes an enlarged image.</p>
   <form method="dialog" class="form-row">
     <label>Your name or initials <span class="sub">optional, shown next to your votes</span>
       <input id="inp-name" maxlength="40" autocomplete="off" placeholder="e.g. AC">
@@ -192,7 +196,7 @@
   <p class="sub" id="note-ctx"></p>
   <form method="dialog">
     <textarea id="inp-note" rows="5" maxlength="2000"
-      placeholder="e.g. voted 2 findable / 1 not findable, but I am certain it is not findable: the only shared item is a generic lamp"></textarea>
+      placeholder="e.g. the query image is broken, or: voted 2 findable / 1 not findable, but I am certain it is not findable: the only shared item is a generic lamp"></textarea>
     <div class="form-row end">
       <button class="ghost" type="submit" value="cancel">Cancel</button>
       <button class="primary" type="submit" value="send">Send note</button>

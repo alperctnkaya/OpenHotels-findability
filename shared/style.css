@@ -116,7 +116,10 @@ svg:not(.sprite) { width: 18px; height: 18px; fill: none; stroke: currentColor; 
 .me .ghost { font-size: 13px; padding: 0 10px; }
 
 .toolbar { min-height: var(--toolbar-h); background: var(--panel-2); border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-2); flex-wrap: wrap; row-gap: 6px; padding-block: 4px; }
-.pos { display: flex; align-items: center; gap: 12px; }
+.pos { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
+.stepper { display: inline-flex; align-items: center; gap: 4px; }
+.stepper .step { min-height: 30px; padding: 0 6px; border-color: var(--line-2); background: var(--panel); color: var(--ink); }
+.stepper .step:hover:not(:disabled) { border-color: var(--accent); background: var(--panel); }
 .jump { display: inline-flex; align-items: center; gap: 6px; }
 .jump label { color: var(--ink-3); white-space: nowrap; }
 .jump input { width: 84px; min-height: 30px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--panel); text-align: right; font-variant-numeric: tabular-nums; }
@@ -293,7 +296,8 @@ dialog input::placeholder, dialog textarea::placeholder { color: var(--ink-3); }
   .verdict-btn kbd, .ghost kbd { display: none; }
   .progress { display: none; }
   .ghost, .primary, .seg button, .switch { min-height: 44px; }
-  .jump input, .jump .ghost { min-height: 40px; }
+  .jump input, .jump .ghost, .stepper .step { min-height: 40px; }
+  .stepper .step { min-width: 40px; justify-content: center; }
   .toast { bottom: 124px; }
 }
 @media (max-width: 560px) {
